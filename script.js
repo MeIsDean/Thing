@@ -372,7 +372,14 @@ async function submitSellItem() {
                 price: price
             }]);
 
-        if (insertError) throw insertError;
+        if (insertError) {
+            if (insertError.code === '23505') {
+                showNotification('You already have this item listed for sale', 'warning');
+            } else {
+                throw insertError;
+            }
+            return;
+        }
 
         // Remove from inventory
         await supabaseClient

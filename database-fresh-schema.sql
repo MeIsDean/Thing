@@ -26,7 +26,8 @@ CREATE TABLE shop (
   owner_id UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
   type_id UUID NOT NULL REFERENCES type(id) ON DELETE CASCADE,
   price INTEGER NOT NULL CHECK (price > 0),
-  created_at TIMESTAMP DEFAULT NOW()
+  created_at TIMESTAMP DEFAULT NOW(),
+  CONSTRAINT owner_type_unique UNIQUE(owner_id, type_id)
 );
 
 -- Step 4: Optional - transactions table for history (read-only)
@@ -90,7 +91,8 @@ DROP FUNCTION IF EXISTS delete_shop_on_purchase() CASCADE;
 CREATE FUNCTION delete_shop_on_purchase()
 RETURNS TRIGGER AS $$
 BEGIN
-  DELETE FROM shop WHERE type_id = NEW.type_id AND owner_id = NEW.seller_id LIMIT 1;
+  DELETE FROM shop 
+  WHERE type_id = NEW.type_id AND owner_id = NEW.seller_id;
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
