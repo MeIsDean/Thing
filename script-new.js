@@ -40,12 +40,40 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Event listeners
     document.getElementById('google-login-btn').addEventListener('click', loginWithGoogle);
 
-    // Auth listener - this maintains session persistence
+    // Wait longer for Supabase to load the stored session from localStorage
+    await new Promise(resolve => setTimeout(resolve, 1000));
+
+    // Check for existing session first (most important for persistence)
+    try {
+        const { data: { session } } = await supabaseClient.auth.getSession();
+        console.log('Checking for existing session on app load...');
+        console.log('Existing session found:', !!session);
+        if (session) {
+            currentUser = session.user;
+            console.log('Restoring logged in user:', currentUser.email);
+            await loadUserData();
+            showDashboard();
+            
+            // Set up auth listener after restoring session
+            supabaseClient.auth.onAuthStateChange(async (event, newSession) => {
+                console.log('Auth state changed:', event);
+                if (!newSession) {
+                    currentUser = null;
+                    showLoginPage();
+                }
+            });
+            return;
+        }
+    } catch (error) {
+        console.error('Error checking initial session:', error);
+    }
+
+    // If no session, set up auth listener and show login
     supabaseClient.auth.onAuthStateChange(async (event, session) => {
         console.log('Auth event:', event, 'Session exists:', !!session);
         if (session) {
             currentUser = session.user;
-            console.log('User logged in:', currentUser.email);
+            console.log('User logged in via auth event:', currentUser.email);
             await loadUserData();
             showDashboard();
         } else {
@@ -54,42 +82,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     });
 
-    // Check for existing session first (most important for persistence)
-    try {
-        const { data: { session } } = await supabaseClient.auth.getSession();
-        console.log('Existing session found:', !!session);
-        if (session) {
-            currentUser = session.user;
-            await loadUserData();
-            showDashboard();
-            return;
-        }
-    } catch (error) {
-        console.error('Error checking initial session:', error);
-    }
-
-    // If no session, check for OAuth redirect
-    setTimeout(async () => {
-        console.log('Checking auth status after potential redirect...');
-        await checkAuthStatus();
-    }, 500);
+    showLoginPage();
 });
-
-async function checkAuthStatus() {
-    try {
-        const { data: { session } } = await supabaseClient.auth.getSession();
-        if (session) {
-            currentUser = session.user;
-            await loadUserData();
-            showDashboard();
-        } else {
-            showLoginPage();
-        }
-    } catch (error) {
-        console.error('Error checking auth:', error);
-        showLoginPage();
-    }
-}
 
 async function loginWithGoogle() {
     try {
