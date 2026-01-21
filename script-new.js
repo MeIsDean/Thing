@@ -40,7 +40,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Event listeners
     document.getElementById('google-login-btn').addEventListener('click', loginWithGoogle);
 
-    // Auth listener
+    // Auth listener - this maintains session persistence
     supabaseClient.auth.onAuthStateChange(async (event, session) => {
         console.log('Auth event:', event, 'Session exists:', !!session);
         if (session) {
@@ -54,8 +54,23 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     });
 
+    // Check for existing session first (most important for persistence)
+    try {
+        const { data: { session } } = await supabaseClient.auth.getSession();
+        console.log('Existing session found:', !!session);
+        if (session) {
+            currentUser = session.user;
+            await loadUserData();
+            showDashboard();
+            return;
+        }
+    } catch (error) {
+        console.error('Error checking initial session:', error);
+    }
+
+    // If no session, check for OAuth redirect
     setTimeout(async () => {
-        console.log('Checking auth status...');
+        console.log('Checking auth status after potential redirect...');
         await checkAuthStatus();
     }, 500);
 });
