@@ -12,6 +12,29 @@ let currentTab = 'home';
 let currentShopTab = 'buy';
 let userAccount = null;
 
+// Random name generation for new players
+function generateRandomPlayerName() {
+    const adjectives = [
+        'Swift', 'Mighty', 'Clever', 'Bold', 'Wise', 'Brave', 'Keen', 'Agile',
+        'Sharp', 'Quick', 'Steady', 'Silent', 'Lucky', 'Bright', 'Dark', 'Fierce',
+        'Noble', 'Wild', 'Free', 'Pure', 'True', 'Rare', 'Epic', 'Mystic',
+        'Shadow', 'Storm', 'Phoenix', 'Dragon', 'Wolf', 'Eagle', 'Raven', 'Tiger'
+    ];
+
+    const nouns = [
+        'Seeker', 'Wanderer', 'Explorer', 'Guardian', 'Sentinel', 'Knight', 'Ranger',
+        'Warrior', 'Hunter', 'Archer', 'Mage', 'Sage', 'Mystic', 'Oracle', 'Oracle',
+        'Slayer', 'Warden', 'Paladin', 'Rogue', 'Ninja', 'Assassin', 'Barbarian',
+        'Shaman', 'Druid', 'Bard', 'Tracker', 'Scout', 'Spy', 'Champion', 'Hero'
+    ];
+
+    const adjective = adjectives[Math.floor(Math.random() * adjectives.length)];
+    const noun = nouns[Math.floor(Math.random() * nouns.length)];
+    const number = Math.floor(Math.random() * 1000);
+
+    return `${adjective}${noun}${number}`;
+}
+
 // Initialize Supabase
 function initSupabase() {
     if (window.supabase && SUPABASE_URL && SUPABASE_ANON_KEY) {
@@ -124,9 +147,10 @@ async function loadUserData() {
 
         if (error && error.code === 'PGRST116') {
             console.log('Account does not exist, creating one...');
+            const randomName = generateRandomPlayerName();
             const { data: newAccount, error: createError } = await supabaseClient
                 .from('accounts')
-                .insert([{ id: currentUser.id, name: 'Player', money: 0, xp: 0 }])
+                .insert([{ id: currentUser.id, name: randomName, money: 0, xp: 0 }])
                 .select()
                 .single();
 
@@ -240,13 +264,25 @@ async function changeName() {
         return;
     }
 
+    if (newName.length > 30) {
+        showNotification('Name must be 30 characters or less', 'warning');
+        return;
+    }
+
     try {
         const { error } = await supabaseClient
             .from('accounts')
             .update({ name: newName })
             .eq('id', currentUser.id);
 
-        if (error) throw error;
+        if (error) {
+            if (error.code === '23505') {
+                showNotification('This name is already taken', 'error');
+            } else {
+                throw error;
+            }
+            return;
+        }
 
         userAccount.name = newName;
         document.getElementById('user-name').textContent = newName;
@@ -460,7 +496,7 @@ async function addFriend() {
             .eq('name', username)
             .single();
 
-        if (fetchError) {
+        if (fetchError || !friend) {
             showNotification('User not found', 'error');
             return;
         }
@@ -470,13 +506,30 @@ async function addFriend() {
             return;
         }
 
+        // Check if already friends
+        const { data: existingFriend } = await supabaseClient
+            .from('friends')
+            .select('id')
+            .eq('user_id', currentUser.id)
+            .eq('friend_id', friend.id)
+            .single();
+
+        if (existingFriend) {
+            showNotification('Already friends with this user', 'warning');
+            return;
+        }
+
         const { error } = await supabaseClient
             .from('friends')
             .insert([{ user_id: currentUser.id, friend_id: friend.id, status: 'accepted' }]);
 
         if (error) {
-            showNotification('Failed to add friend', 'error');
-            throw error;
+            if (error.code === '23505') {
+                showNotification('Already friends with this user', 'warning');
+            } else {
+                showNotification('Failed to add friend', 'error');
+            }
+            return;
         }
 
         input.value = '';
@@ -484,6 +537,7 @@ async function addFriend() {
         await loadFriendsList();
     } catch (error) {
         console.error('Error adding friend:', error);
+        showNotification('Error adding friend', 'error');
     }
 }
 

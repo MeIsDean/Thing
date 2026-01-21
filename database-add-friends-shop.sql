@@ -1,6 +1,9 @@
 -- Add Friends and Player Marketplace Tables to Existing Database
 -- This script adds tables for the Friends and P2P Marketplace functionality
 
+-- Step 0: Update accounts table to ensure unique usernames and make name visible
+ALTER TABLE accounts ADD CONSTRAINT accounts_name_unique UNIQUE(name);
+
 -- Step 1: Create friends table
 CREATE TABLE IF NOT EXISTS friends (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
