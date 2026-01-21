@@ -574,8 +574,11 @@ async function loadFriends() {
 async function addFriend() {
     if (!currentUser) return;
 
-    const username = prompt('Enter friend username:');
-    if (!username) return;
+    const username = document.getElementById('friend-input').value.trim();
+    if (!username) {
+        showNotification('Enter a username', 'warning');
+        return;
+    }
 
     try {
         // Find user by username
@@ -616,6 +619,7 @@ async function addFriend() {
             }]);
 
         showNotification('Friend request sent!', 'success');
+        document.getElementById('friend-input').value = '';
         await loadFriends();
     } catch (error) {
         console.error('Error adding friend:', error);
