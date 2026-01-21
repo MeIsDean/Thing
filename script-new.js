@@ -683,8 +683,9 @@ async function loadMyListings() {
 
         const { data: listings } = await supabaseClient
             .from('player_listings')
-            .select('id, item_id, quantity, price_per_unit, expires_at, items(name, rarity)')
+            .select('id, item_id, quantity, price_per_unit, expires_at, sold_at, items(name, rarity)')
             .eq('seller_id', currentUser.id)
+            .is('sold_at', null)
             .gt('expires_at', new Date().toISOString())
             .order('created_at', { ascending: false });
 
@@ -722,8 +723,9 @@ async function loadMarketListings() {
     try {
         const { data: listings } = await supabaseClient
             .from('player_listings')
-            .select('id, seller_id, item_id, quantity, price_per_unit, expires_at, items(name, rarity), accounts!player_listings_seller_id_fkey(name)')
+            .select('id, seller_id, item_id, quantity, price_per_unit, expires_at, sold_at, items(name, rarity), accounts!player_listings_seller_id_fkey(name)')
             .gt('expires_at', new Date().toISOString())
+            .is('sold_at', null)
             .neq('seller_id', currentUser.id)
             .order('created_at', { ascending: false });
 
@@ -797,10 +799,10 @@ async function buyFromPlayer(listingId, price, itemId, sellerId) {
                 .insert([{ account_id: currentUser.id, item_id: itemId, quantity: 1 }]);
         }
 
-        // Delete listing
+        // Mark listing as sold (instead of deleting)
         await supabaseClient
             .from('player_listings')
-            .delete()
+            .update({ sold_at: new Date().toISOString() })
             .eq('id', listingId);
 
         showNotification('Item purchased!', 'success');
@@ -863,11 +865,12 @@ async function handleExpiredListings() {
     try {
         const now = new Date().toISOString();
 
-        // Get expired listings
+        // Get expired listings that haven't been sold
         const { data: expiredListings } = await supabaseClient
             .from('player_listings')
             .select('id, seller_id, item_id, quantity')
-            .lt('expires_at', now);
+            .lt('expires_at', now)
+            .is('sold_at', null);
 
         if (!expiredListings || expiredListings.length === 0) return;
 
