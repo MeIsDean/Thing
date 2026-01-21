@@ -568,6 +568,7 @@ async function loadShop() {
         const { data: listings, error } = await supabaseClient
             .from('shop')
             .select('id, seller_id, item_id, quantity, price, items(name, rarity), accounts!shop_seller_id_fkey(name)')
+            .is('sold_at', null)
             .order('created_at', { ascending: false });
 
         if (error) throw error;
@@ -821,7 +822,7 @@ async function buyListing(listingId, price, itemId, sellerId) {
                 .insert([{ account_id: currentUser.id, item_id: itemId, quantity: 1 }]);
         }
 
-        // Record transaction (trigger will auto-delete the shop listing)
+        // Record transaction (trigger will auto-mark as sold)
         await supabaseClient
             .from('transactions')
             .insert([{
@@ -832,12 +833,13 @@ async function buyListing(listingId, price, itemId, sellerId) {
                 price: price
             }]);
 
-        // Delete listing from shop (backup - RLS will block if not seller)
+        // Mark listing as sold (backup - trigger will handle it)
         supabaseClient
             .from('shop')
-            .delete()
+            .update({ sold_at: new Date().toISOString() })
             .eq('seller_id', sellerId)
             .eq('item_id', itemId)
+            .is('sold_at', null)
             .then(() => {})
             .catch(() => {}); // Ignore errors, trigger will handle it
 

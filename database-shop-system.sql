@@ -7,6 +7,7 @@ CREATE TABLE IF NOT EXISTS shop (
   item_id UUID NOT NULL REFERENCES items(id) ON DELETE CASCADE,
   quantity INTEGER NOT NULL DEFAULT 1 CHECK (quantity > 0),
   price INTEGER NOT NULL CHECK (price > 0),
+  sold_at TIMESTAMP,
   created_at TIMESTAMP DEFAULT NOW(),
   CONSTRAINT seller_item_unique UNIQUE(seller_id, item_id)
 );
@@ -30,11 +31,15 @@ ALTER TABLE transactions ENABLE ROW LEVEL SECURITY;
 -- Step 4: Shop table RLS policies
 DROP POLICY IF EXISTS "Anyone can view shop listings" ON shop;
 CREATE POLICY "Anyone can view shop listings" ON shop
-  FOR SELECT USING (true);
+  FOR SELECT USING (sold_at IS NULL);
 
 DROP POLICY IF EXISTS "Users can create their own listings" ON shop;
 CREATE POLICY "Users can create their own listings" ON shop
   FOR INSERT WITH CHECK (seller_id = auth.uid());
+
+DROP POLICY IF EXISTS "Users can update their own listings" ON shop;
+CREATE POLICY "Users can update their own listings" ON shop
+  FOR UPDATE USING (seller_id = auth.uid() OR sold_at IS NULL);
 
 DROP POLICY IF EXISTS "Users can delete their own listings" ON shop;
 CREATE POLICY "Users can delete their own listings" ON shop
@@ -55,21 +60,21 @@ CREATE INDEX IF NOT EXISTS idx_shop_item_id ON shop(item_id);
 CREATE INDEX IF NOT EXISTS idx_transactions_buyer_id ON transactions(buyer_id);
 CREATE INDEX IF NOT EXISTS idx_transactions_seller_id ON transactions(seller_id);
 
--- Step 7: Create trigger to delete shop listing when purchased
-DROP FUNCTION IF EXISTS delete_shop_listing_on_purchase() CASCADE;
-CREATE FUNCTION delete_shop_listing_on_purchase()
+-- Step 7: Create trigger to mark shop listing as sold when purchased
+DROP FUNCTION IF EXISTS mark_shop_listing_sold() CASCADE;
+CREATE FUNCTION mark_shop_listing_sold()
 RETURNS TRIGGER AS $$
 BEGIN
-  -- Delete the shop listing after transaction is created
-  DELETE FROM shop WHERE item_id = NEW.item_id AND seller_id = NEW.seller_id;
+  -- Mark the shop listing as sold after transaction is created
+  UPDATE shop SET sold_at = NOW() WHERE item_id = NEW.item_id AND seller_id = NEW.seller_id AND sold_at IS NULL;
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
 
-DROP TRIGGER IF EXISTS trigger_delete_shop_on_purchase ON transactions;
-CREATE TRIGGER trigger_delete_shop_on_purchase
+DROP TRIGGER IF EXISTS trigger_mark_shop_sold ON transactions;
+CREATE TRIGGER trigger_mark_shop_sold
 AFTER INSERT ON transactions
 FOR EACH ROW
-EXECUTE FUNCTION delete_shop_listing_on_purchase();
+EXECUTE FUNCTION mark_shop_listing_sold();
 
 -- Done! Fresh shop system is ready.
