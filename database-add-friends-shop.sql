@@ -1,5 +1,5 @@
--- Add Friends and Shop Tables to Existing Database
--- This script adds tables for the Friends and Shop functionality
+-- Add Friends and Player Marketplace Tables to Existing Database
+-- This script adds tables for the Friends and P2P Marketplace functionality
 
 -- Step 1: Create friends table
 CREATE TABLE IF NOT EXISTS friends (
@@ -13,35 +13,23 @@ CREATE TABLE IF NOT EXISTS friends (
   CHECK (user_id != friend_id)
 );
 
--- Step 2: Create shop_listings table (items available for sale)
-CREATE TABLE IF NOT EXISTS shop_listings (
+-- Step 2: Create player_listings table (items for sale by players)
+CREATE TABLE IF NOT EXISTS player_listings (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  seller_id UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
   item_id UUID NOT NULL REFERENCES items(id) ON DELETE CASCADE,
-  buy_price INTEGER NOT NULL DEFAULT 100,
-  sell_price INTEGER NOT NULL DEFAULT 50,
-  created_at TIMESTAMP DEFAULT NOW(),
-  updated_at TIMESTAMP DEFAULT NOW(),
-  UNIQUE(item_id)
-);
-
--- Step 3: Create shop_transactions table (transaction history)
-CREATE TABLE IF NOT EXISTS shop_transactions (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  account_id UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
-  item_id UUID NOT NULL REFERENCES items(id) ON DELETE CASCADE,
-  transaction_type TEXT NOT NULL CHECK (transaction_type IN ('buy', 'sell')),
-  quantity INTEGER NOT NULL,
+  quantity INTEGER NOT NULL DEFAULT 1,
   price_per_unit INTEGER NOT NULL,
-  total_price INTEGER NOT NULL,
-  created_at TIMESTAMP DEFAULT NOW()
+  expires_at TIMESTAMP NOT NULL,
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW()
 );
 
--- Step 4: Enable Row Level Security (RLS)
+-- Step 3: Enable Row Level Security (RLS)
 ALTER TABLE friends ENABLE ROW LEVEL SECURITY;
-ALTER TABLE shop_listings ENABLE ROW LEVEL SECURITY;
-ALTER TABLE shop_transactions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE player_listings ENABLE ROW LEVEL SECURITY;
 
--- Step 5: Create RLS policies for friends table
+-- Step 4: Create RLS policies for friends table
 DROP POLICY IF EXISTS "Users can view their friends" ON friends;
 CREATE POLICY "Users can view their friends" ON friends
   FOR SELECT USING (user_id = auth.uid() OR friend_id = auth.uid());
@@ -58,30 +46,29 @@ DROP POLICY IF EXISTS "Users can delete friends" ON friends;
 CREATE POLICY "Users can delete friends" ON friends
   FOR DELETE USING (user_id = auth.uid() OR friend_id = auth.uid());
 
--- Step 6: Create RLS policies for shop_listings table
-DROP POLICY IF EXISTS "Anyone can view shop listings" ON shop_listings;
-CREATE POLICY "Anyone can view shop listings" ON shop_listings
-  FOR SELECT USING (true);
+-- Step 5: Create RLS policies for player_listings table
+DROP POLICY IF EXISTS "Anyone can view player listings" ON player_listings;
+CREATE POLICY "Anyone can view player listings" ON player_listings
+  FOR SELECT USING (expires_at > NOW());
 
--- Step 7: Create RLS policies for shop_transactions table
-DROP POLICY IF EXISTS "Users can view their transactions" ON shop_transactions;
-CREATE POLICY "Users can view their transactions" ON shop_transactions
-  FOR SELECT USING (account_id = auth.uid());
+DROP POLICY IF EXISTS "Users can create their own listings" ON player_listings;
+CREATE POLICY "Users can create their own listings" ON player_listings
+  FOR INSERT WITH CHECK (seller_id = auth.uid());
 
-DROP POLICY IF EXISTS "Users can create transactions" ON shop_transactions;
-CREATE POLICY "Users can create transactions" ON shop_transactions
-  FOR INSERT WITH CHECK (account_id = auth.uid());
+DROP POLICY IF EXISTS "Users can update their own listings" ON player_listings;
+CREATE POLICY "Users can update their own listings" ON player_listings
+  FOR UPDATE USING (seller_id = auth.uid());
 
--- Step 8: Insert shop prices for existing items
-INSERT INTO shop_listings (item_id, buy_price, sell_price) 
-SELECT id, 100, 50 FROM items 
-ON CONFLICT DO NOTHING;
+DROP POLICY IF EXISTS "Users can delete their own listings" ON player_listings;
+CREATE POLICY "Users can delete their own listings" ON player_listings
+  FOR DELETE USING (seller_id = auth.uid());
 
--- Step 9: Create indexes for performance
+-- Step 6: Create indexes for performance
 CREATE INDEX IF NOT EXISTS idx_friends_user_id ON friends(user_id);
 CREATE INDEX IF NOT EXISTS idx_friends_friend_id ON friends(friend_id);
 CREATE INDEX IF NOT EXISTS idx_friends_status ON friends(status);
-CREATE INDEX IF NOT EXISTS idx_shop_transactions_account_id ON shop_transactions(account_id);
-CREATE INDEX IF NOT EXISTS idx_shop_transactions_created_at ON shop_transactions(created_at);
+CREATE INDEX IF NOT EXISTS idx_player_listings_seller_id ON player_listings(seller_id);
+CREATE INDEX IF NOT EXISTS idx_player_listings_expires_at ON player_listings(expires_at);
+CREATE INDEX IF NOT EXISTS idx_player_listings_item_id ON player_listings(item_id);
 
--- Done! The database is ready for friends and shop functionality.
+-- Done! The database is ready for friends and player marketplace functionality.

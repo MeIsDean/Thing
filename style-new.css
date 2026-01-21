@@ -430,6 +430,31 @@ body {
     display: block;
 }
 
+.listing-controls {
+    margin-bottom: 1.5rem;
+    background: var(--bg-white);
+    padding: 1rem;
+    border-radius: 0.75rem;
+    border: 1px solid var(--border);
+}
+
+.listing-controls .input-group {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+@media (min-width: 768px) {
+    .listing-controls .input-group {
+        flex-direction: row;
+    }
+}
+
+.input-group .input-field,
+.input-group select {
+    flex: 1;
+}
+
 .shop-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));

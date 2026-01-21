@@ -104,22 +104,31 @@
             <!-- Shop Tab -->
             <div id="shop-tab" class="tab-pane">
                 <div class="page-content">
-                    <h3>Shop</h3>
+                    <h3>Marketplace</h3>
                     
                     <div class="shop-tabs">
-                        <button class="shop-tab-btn active" onclick="switchShopTab('buy')">Buy</button>
-                        <button class="shop-tab-btn" onclick="switchShopTab('sell')">Sell</button>
+                        <button class="shop-tab-btn active" onclick="switchShopTab('listings')">My Listings</button>
+                        <button class="shop-tab-btn" onclick="switchShopTab('browse')">Browse</button>
                     </div>
 
-                    <div id="buy-section" class="shop-section active">
-                        <div class="shop-grid" id="buy-display">
-                            <p class="empty-message">No items to buy</p>
+                    <div id="listings-section" class="shop-section active">
+                        <div class="listing-controls">
+                            <div class="input-group">
+                                <select id="item-select" class="input-field">
+                                    <option value="">Select item to sell...</option>
+                                </select>
+                                <input type="number" id="price-input" placeholder="Price per unit" class="input-field" min="1">
+                                <button class="btn btn-primary" onclick="createListing()">List for Sale</button>
+                            </div>
+                        </div>
+                        <div class="shop-grid" id="my-listings-display">
+                            <p class="empty-message">No active listings</p>
                         </div>
                     </div>
 
-                    <div id="sell-section" class="shop-section">
-                        <div class="shop-grid" id="sell-display">
-                            <p class="empty-message">No items to sell</p>
+                    <div id="browse-section" class="shop-section">
+                        <div class="shop-grid" id="market-listings-display">
+                            <p class="empty-message">No items in marketplace</p>
                         </div>
                     </div>
                 </div>
