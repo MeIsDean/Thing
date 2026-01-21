@@ -175,7 +175,7 @@ async function collectItems() {
 
         if (timeSinceCollection < cooldownHours) {
             const hoursRemaining = (cooldownHours - timeSinceCollection).toFixed(1);
-            alert(`You can collect again in ${hoursRemaining} hours`);
+            showNotification(`You can collect again in ${hoursRemaining} hours`, 'warning');
             return;
         }
 
@@ -229,17 +229,17 @@ async function collectItems() {
             .eq('id', currentUser.id);
 
         await loadUserData();
-        alert('🎉 You collected an item!');
+        showNotification('🎉 You collected an item!', 'success');
     } catch (error) {
         console.error('Error collecting:', error);
-        alert('Failed to collect items');
+        showNotification('Failed to collect items', 'error');
     }
 }
 
 async function changeName() {
     const newName = document.getElementById('name-input').value.trim();
     if (!newName) {
-        alert('Please enter a name');
+        showNotification('Please enter a name', 'warning');
         return;
     }
 
@@ -254,22 +254,22 @@ async function changeName() {
         userAccount.name = newName;
         document.getElementById('user-name').textContent = newName;
         document.getElementById('name-input').value = '';
-        alert('Name changed successfully!');
+        showNotification('Name changed successfully!', 'success');
     } catch (error) {
         console.error('Error changing name:', error);
-        alert('Failed to change name');
+        showNotification('Failed to change name', 'error');
     }
 }
 
 async function addFriend() {
     const friendInput = document.getElementById('friend-input').value.trim();
     if (!friendInput) {
-        alert('Please enter a friend ID or username');
+        showNotification('Please enter a friend ID or username', 'warning');
         return;
     }
 
     // TODO: Implement friends system with database
-    alert('Friends system coming soon!');
+    showNotification('Friends system coming soon!', 'info');
     document.getElementById('friend-input').value = '';
 }
 
@@ -313,10 +313,10 @@ async function deleteAccount() {
         if (accError) throw accError;
 
         await logout();
-        alert('Account deleted successfully.');
+        showNotification('Account deleted successfully.', 'success');
     } catch (error) {
         console.error('Error deleting account:', error);
-        alert('Failed to delete account: ' + (error.message || 'Unknown error'));
+        showNotification('Failed to delete account: ' + (error.message || 'Unknown error'), 'error');
     }
 }
 
@@ -464,4 +464,34 @@ function escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
+}
+
+// Notification System
+function showNotification(message, type = 'success', duration = 3000) {
+    const container = document.getElementById('notification-container');
+    const notification = document.createElement('div');
+    const icons = {
+        'success': 'bi-check-circle-fill',
+        'error': 'bi-exclamation-circle-fill',
+        'warning': 'bi-exclamation-triangle-fill',
+        'info': 'bi-info-circle-fill'
+    };
+
+    notification.className = `notification ${type}`;
+    notification.innerHTML = `
+        <i class="bi ${icons[type]} notif-icon"></i>
+        <div class="notif-content">${escapeHtml(message)}</div>
+        <button class="notif-close" onclick="this.parentElement.remove()">
+            <i class="bi bi-x"></i>
+        </button>
+    `;
+
+    container.appendChild(notification);
+
+    if (duration > 0) {
+        setTimeout(() => {
+            notification.classList.add('removing');
+            setTimeout(() => notification.remove(), 300);
+        }, duration);
+    }
 }
