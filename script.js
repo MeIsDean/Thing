@@ -469,8 +469,10 @@ async function buyListing(listingId, price, typeId, sellerId) {
                 type_id: typeId
             }]);
 
-        // Record transaction (will trigger server-side deletion of shop listing)
-        await supabaseClient
+        // Record transaction - SERVER TRIGGER WILL DELETE THE SHOP LISTING
+        // This is the only place we touch the shop table from client
+        // The trigger is the source of truth for deletion
+        const { error: transactionError } = await supabaseClient
             .from('transactions')
             .insert([{
                 buyer_id: currentUser.id,
@@ -479,13 +481,7 @@ async function buyListing(listingId, price, typeId, sellerId) {
                 price: price
             }]);
 
-        // Delete listing from shop (backup, trigger will also handle this)
-        supabaseClient
-            .from('shop')
-            .delete()
-            .eq('id', listingId)
-            .then(() => {})
-            .catch(() => {});
+        if (transactionError) throw transactionError;
 
         showNotification('Item purchased!', 'success');
         await loadUserData();
