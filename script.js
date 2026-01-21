@@ -351,29 +351,45 @@ async function deleteAccount() {
         
         // Delete inventory entries first (inventory has FK to accounts)
         console.log('Deleting inventory entries...');
-        const { error: invError } = await supabaseClient
+        const { data: invData, error: invError } = await supabaseClient
             .from('inventory')
             .delete()
-            .eq('account_id', currentUser.id);
+            .eq('account_id', currentUser.id)
+            .select();
 
         if (invError) {
             console.error('Error deleting inventory:', invError);
             throw invError;
         }
-        console.log('Inventory deleted successfully');
+        console.log('Inventory deleted successfully. Deleted rows:', invData);
+
+        // Verify inventory is gone
+        const { data: checkInv } = await supabaseClient
+            .from('inventory')
+            .select('id')
+            .eq('account_id', currentUser.id);
+        console.log('Inventory count after deletion:', checkInv?.length || 0);
 
         // Delete account
         console.log('Deleting account record...');
-        const { error: accError } = await supabaseClient
+        const { data: accData, error: accError } = await supabaseClient
             .from('accounts')
             .delete()
-            .eq('id', currentUser.id);
+            .eq('id', currentUser.id)
+            .select();
 
         if (accError) {
             console.error('Error deleting account:', accError);
             throw accError;
         }
-        console.log('Account deleted successfully');
+        console.log('Account deleted successfully. Deleted rows:', accData);
+
+        // Verify account is gone
+        const { data: checkAcc } = await supabaseClient
+            .from('accounts')
+            .select('id')
+            .eq('id', currentUser.id);
+        console.log('Account count after deletion:', checkAcc?.length || 0);
 
         // Sign out
         await logout();
