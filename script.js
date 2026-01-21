@@ -132,44 +132,45 @@ async function loadUserData() {
 
     try {
         console.log('Loading user data for:', currentUser.id);
-        // Get or create user profile
-        let { data: profile, error } = await supabaseClient
-            .from('user_profiles')
+        // Get or create account
+        let { data: account, error } = await supabaseClient
+            .from('accounts')
             .select('*')
-            .eq('user_id', currentUser.id)
+            .eq('id', currentUser.id)
             .single();
 
         if (error && error.code === 'PGRST116') {
-            console.log('Profile does not exist, creating one...');
-            // User profile doesn't exist, create one
-            const { data: newProfile, error: createError } = await supabaseClient
-                .from('user_profiles')
+            console.log('Account does not exist, creating one...');
+            // Account doesn't exist, create one
+            const { data: newAccount, error: createError } = await supabaseClient
+                .from('accounts')
                 .insert([{
-                    user_id: currentUser.id,
-                    email: currentUser.email,
-                    score: 0,
+                    id: currentUser.id,
+                    name: 'Player',
+                    money: 0,
+                    xp: 0,
                 }])
                 .select()
                 .single();
 
             if (createError) {
-                console.error('Error creating profile:', createError);
+                console.error('Error creating account:', createError);
                 throw createError;
             }
-            profile = newProfile;
-            console.log('Profile created successfully');
+            account = newAccount;
+            console.log('Account created successfully');
         } else if (error) {
-            console.error('Error fetching profile:', error);
+            console.error('Error fetching account:', error);
             throw error;
         }
 
-        console.log('Profile loaded:', profile);
+        console.log('Account loaded:', account);
 
-        // Get inventory items
+        // Get inventory with item details
         const { data: inventory, error: invError } = await supabaseClient
             .from('inventory')
-            .select('*')
-            .eq('user_id', currentUser.id);
+            .select('id, quantity, acquired_at, items(id, name, rarity, description)')
+            .eq('account_id', currentUser.id);
 
         if (invError) {
             console.error('Error fetching inventory:', invError);
@@ -179,8 +180,8 @@ async function loadUserData() {
         console.log('Inventory loaded, items:', inventory?.length || 0);
 
         // Update UI
-        document.getElementById('user-name').textContent = currentUser.email;
-        updateScoreDisplay(profile.score);
+        document.getElementById('user-name').textContent = account.name || 'Player';
+        updateStatsDisplay(account);
         updateInventoryDisplay(inventory || []);
         console.log('UI updated successfully');
     } catch (error) {
@@ -188,87 +189,119 @@ async function loadUserData() {
     }
 }
 
-// Add score
-async function addScore(amount) {
+// Add XP (replaces score)
+async function addXP(amount) {
     if (!currentUser) return;
 
     try {
-        const { data: profile } = await supabaseClient
-            .from('user_profiles')
-            .select('score')
-            .eq('user_id', currentUser.id)
+        const { data: account } = await supabaseClient
+            .from('accounts')
+            .select('xp')
+            .eq('id', currentUser.id)
             .single();
 
-        const newScore = (profile?.score || 0) + amount;
+        const newXP = (account?.xp || 0) + amount;
 
         const { error } = await supabaseClient
-            .from('user_profiles')
-            .update({ score: newScore })
-            .eq('user_id', currentUser.id);
+            .from('accounts')
+            .update({ xp: newXP })
+            .eq('id', currentUser.id);
 
         if (error) throw error;
 
-        updateScoreDisplay(newScore);
+        updateStatsDisplay({ xp: newXP });
     } catch (error) {
-        console.error('Error adding score:', error);
+        console.error('Error adding XP:', error);
     }
 }
 
-// Add item to inventory
-async function addItem() {
+// Collect items (respects cooldown)
+async function collectItems() {
     if (!currentUser) return;
 
-    const itemName = document.getElementById('item-name').value.trim();
-    const itemQuantity = parseInt(document.getElementById('item-quantity').value) || 1;
-
-    if (!itemName) {
-        alert('Please enter an item name');
-        return;
-    }
-
     try {
-        // Check if item already exists
-        const { data: existingItem } = await supabaseClient
-            .from('inventory')
-            .select('*')
-            .eq('user_id', currentUser.id)
-            .eq('item_name', itemName)
+        // Check if enough time has passed since last collection
+        const { data: account } = await supabaseClient
+            .from('accounts')
+            .select('last_collected')
+            .eq('id', currentUser.id)
             .single();
 
-        if (existingItem) {
-            // Update quantity
-            const { error } = await supabaseClient
-                .from('inventory')
-                .update({ quantity: existingItem.quantity + itemQuantity })
-                .eq('id', existingItem.id);
+        const lastCollected = account?.last_collected ? new Date(account.last_collected) : null;
+        const now = new Date();
+        const cooldownHours = 4; // Change this to adjust cooldown
+        const timeSinceCollection = lastCollected ? (now - lastCollected) / (1000 * 60 * 60) : cooldownHours + 1;
 
-            if (error) throw error;
-        } else {
-            // Add new item
-            const { error } = await supabaseClient
-                .from('inventory')
-                .insert([{
-                    user_id: currentUser.id,
-                    item_name: itemName,
-                    quantity: itemQuantity,
-                }]);
-
-            if (error) throw error;
+        if (timeSinceCollection < cooldownHours) {
+            const hoursRemaining = (cooldownHours - timeSinceCollection).toFixed(1);
+            alert(`You can collect again in ${hoursRemaining} hours`);
+            return;
         }
 
-        document.getElementById('item-name').value = '';
-        document.getElementById('item-quantity').value = '1';
+        // Grant random item
+        const itemRarities = ['common', 'uncommon', 'rare', 'epic', 'legendary'];
+        const rarityWeights = [50, 30, 15, 4, 1]; // Weighted probability
+        const random = Math.random() * 100;
+        let selectedRarity = itemRarities[0];
+        let cumulativeWeight = 0;
 
-        // Reload inventory
-        const { data: inventory } = await supabaseClient
+        for (let i = 0; i < rarityWeights.length; i++) {
+            cumulativeWeight += rarityWeights[i];
+            if (random <= cumulativeWeight) {
+                selectedRarity = itemRarities[i];
+                break;
+            }
+        }
+
+        // Get random item of that rarity
+        const { data: items, error: itemError } = await supabaseClient
+            .from('items')
+            .select('id')
+            .eq('rarity', selectedRarity);
+
+        if (itemError || !items || items.length === 0) {
+            throw new Error('No items available');
+        }
+
+        const randomItem = items[Math.floor(Math.random() * items.length)];
+
+        // Check if player already has this item
+        const { data: existingInventory } = await supabaseClient
             .from('inventory')
             .select('*')
-            .eq('user_id', currentUser.id);
+            .eq('account_id', currentUser.id)
+            .eq('item_id', randomItem.id)
+            .single();
 
-        updateInventoryDisplay(inventory || []);
+        if (existingInventory) {
+            // Update quantity
+            await supabaseClient
+                .from('inventory')
+                .update({ quantity: existingInventory.quantity + 1 })
+                .eq('id', existingInventory.id);
+        } else {
+            // Add new inventory entry
+            await supabaseClient
+                .from('inventory')
+                .insert([{
+                    account_id: currentUser.id,
+                    item_id: randomItem.id,
+                    quantity: 1,
+                }]);
+        }
+
+        // Update last_collected timestamp
+        await supabaseClient
+            .from('accounts')
+            .update({ last_collected: now.toISOString() })
+            .eq('id', currentUser.id);
+
+        // Reload data
+        await loadUserData();
+        alert('You collected an item!');
     } catch (error) {
-        console.error('Error adding item:', error);
-        alert('Failed to add item');
+        console.error('Error collecting items:', error);
+        alert('Failed to collect items');
     }
 }
 
@@ -280,19 +313,16 @@ async function removeItem(itemId) {
         const { error } = await supabaseClient
             .from('inventory')
             .delete()
-            .eq('id', itemId);
+            .eq('id', itemId)
+            .eq('account_id', currentUser.id);
 
         if (error) throw error;
 
         // Reload inventory
-        const { data: inventory } = await supabaseClient
-            .from('inventory')
-            .select('*')
-            .eq('user_id', currentUser.id);
-
-        updateInventoryDisplay(inventory || []);
+        await loadUserData();
     } catch (error) {
         console.error('Error removing item:', error);
+        alert('Failed to remove item');
     }
 }
 
@@ -317,24 +347,21 @@ async function deleteAccount() {
     if (!currentUser) return;
 
     try {
-        // Delete user data first
+        // Delete inventory entries
         await supabaseClient
             .from('inventory')
             .delete()
-            .eq('user_id', currentUser.id);
+            .eq('account_id', currentUser.id);
 
+        // Delete account
         await supabaseClient
-            .from('user_profiles')
+            .from('accounts')
             .delete()
-            .eq('user_id', currentUser.id);
+            .eq('id', currentUser.id);
 
-        // Delete the user account (requires admin API)
-        // For now, just sign out
+        // Sign out
         await logout();
 
-        // Note: To fully delete the user account from auth, you need to:
-        // 1. Set up a backend endpoint that uses the Supabase admin API
-        // 2. Call it with the user ID to delete the auth user
         alert('Account and all associated data have been deleted.');
     } catch (error) {
         console.error('Error deleting account:', error);
@@ -369,6 +396,28 @@ function updateScoreDisplay(score) {
     document.getElementById('score-display').textContent = score;
 }
 
+function updateStatsDisplay(account) {
+    document.getElementById('xp-display').textContent = account.xp || 0;
+    document.getElementById('money-display').textContent = account.money || 0;
+    
+    // Calculate next collection time if last_collected exists
+    if (account.last_collected) {
+        const lastCollected = new Date(account.last_collected);
+        const nextCollection = new Date(lastCollected.getTime() + 4 * 60 * 60 * 1000);
+        const now = new Date();
+        const hoursUntil = Math.max(0, (nextCollection - now) / (1000 * 60 * 60));
+        
+        const nextCollectionEl = document.getElementById('next-collection');
+        if (nextCollectionEl) {
+            if (hoursUntil > 0) {
+                nextCollectionEl.textContent = `Next collection in ${hoursUntil.toFixed(1)} hours`;
+            } else {
+                nextCollectionEl.textContent = 'Ready to collect!';
+            }
+        }
+    }
+}
+
 function updateInventoryDisplay(items) {
     const container = document.getElementById('inventory-display');
 
@@ -377,18 +426,30 @@ function updateInventoryDisplay(items) {
         return;
     }
 
-    container.innerHTML = items.map(item => `
-        <div class="inventory-item">
-            <div class="item-info">
-                <h4>${escapeHtml(item.item_name)}</h4>
-                <p>Added: ${new Date(item.created_at).toLocaleDateString()}</p>
+    container.innerHTML = items.map(item => {
+        const itemData = item.items;
+        const rarityColor = {
+            'common': '#95a5a6',
+            'uncommon': '#2ecc71',
+            'rare': '#3498db',
+            'epic': '#9b59b6',
+            'legendary': '#f39c12'
+        };
+        
+        return `
+            <div class="inventory-item" style="border-left: 4px solid ${rarityColor[itemData.rarity] || '#95a5a6'};">
+                <div class="item-info">
+                    <h4>${escapeHtml(itemData.name)}</h4>
+                    <p class="item-rarity" style="color: ${rarityColor[itemData.rarity] || '#95a5a6'}; font-size: 12px; font-weight: bold;">${itemData.rarity.toUpperCase()}</p>
+                    <p style="font-size: 12px; color: #7f8c8d;">${escapeHtml(itemData.description || '')}</p>
+                </div>
+                <div style="display: flex; align-items: center; gap: 12px;">
+                    <span class="item-quantity">${item.quantity}x</span>
+                    <button class="btn btn-secondary" onclick="removeItem('${item.id}')" style="padding: 6px 12px; font-size: 12px;">Remove</button>
+                </div>
             </div>
-            <div style="display: flex; align-items: center; gap: 12px;">
-                <span class="item-quantity">${item.quantity}</span>
-                <button class="btn btn-secondary" onclick="removeItem(${item.id})" style="padding: 6px 12px; font-size: 12px;">Remove</button>
-            </div>
-        </div>
-    `).join('');
+        `;
+    }).join('');
 }
 
 // Utility function to escape HTML

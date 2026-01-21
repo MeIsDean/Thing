@@ -40,13 +40,17 @@
         <main class="dashboard-container">
             <div class="stats-section">
                 <div class="stat-card">
-                    <h3>Score</h3>
-                    <p class="stat-value" id="score-display">0</p>
-                    <div class="stat-actions">
-                        <button class="btn btn-small" onclick="addScore(10)">+10</button>
-                        <button class="btn btn-small" onclick="addScore(50)">+50</button>
-                        <button class="btn btn-small" onclick="addScore(100)">+100</button>
-                    </div>
+                    <h3>XP</h3>
+                    <p class="stat-value" id="xp-display">0</p>
+                </div>
+                <div class="stat-card">
+                    <h3>Money</h3>
+                    <p class="stat-value" id="money-display">0</p>
+                </div>
+                <div class="stat-card">
+                    <h3>Collection</h3>
+                    <p class="stat-value" id="next-collection">Ready to collect!</p>
+                    <button class="btn btn-primary" onclick="collectItems()" style="margin-top: 10px;">Collect Items</button>
                 </div>
             </div>
 
@@ -54,12 +58,6 @@
                 <h2>Inventory</h2>
                 <div class="inventory-items" id="inventory-display">
                     <p class="empty-message">No items in inventory</p>
-                </div>
-                
-                <div class="add-item">
-                    <input type="text" id="item-name" placeholder="Item name">
-                    <input type="number" id="item-quantity" placeholder="Quantity" min="1" value="1">
-                    <button class="btn btn-primary" onclick="addItem()">Add Item</button>
                 </div>
             </div>
 
