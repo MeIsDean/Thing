@@ -1,6 +1,7 @@
 // Load environment variables for the app
-window.REACT_APP_SUPABASE_URL = 'https://drqfiendmatvchkbihei.supabase.co';
-window.REACT_APP_SUPABASE_ANON_KEY = 'sb_publishable_Mul1_bZ0SFlEQOBBgyujCw__xDzer_D';
+// These will be replaced by Vercel build process
+window.REACT_APP_SUPABASE_URL = 'YOUR_SUPABASE_URL';
+window.REACT_APP_SUPABASE_ANON_KEY = 'YOUR_SUPABASE_ANON_KEY';
 
 // Supabase Configuration
 // Read from window variables (set above) or use hardcoded values
