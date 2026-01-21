@@ -560,57 +560,108 @@ async function removeFriend(friendshipId) {
     }
 }
 
-// ===== SHOP FUNCTIONALITY (Player-to-Player Marketplace) =====
+// ===== SHOP FUNCTIONALITY (Simple P2P Marketplace) =====
 async function loadShop() {
     if (!currentUser) return;
 
     try {
-        // Load my listings
-        await loadMyListings();
-        // Load market listings
-        await loadMarketListings();
-        // Populate item dropdown
-        await populateItemSelect();
+        const { data: listings, error } = await supabaseClient
+            .from('shop')
+            .select('id, seller_id, item_id, quantity, price, items(name, rarity), accounts!shop_seller_id_fkey(name)')
+            .order('created_at', { ascending: false });
+
+        if (error) throw error;
+
+        const shopDisplay = document.getElementById('shop-display');
+        if (!listings || listings.length === 0) {
+            shopDisplay.innerHTML = '<p class="empty-message">No items in marketplace</p>';
+            return;
+        }
+
+        shopDisplay.innerHTML = listings.map(listing => {
+            const isOwnListing = listing.seller_id === currentUser.id;
+            
+            return `
+                <div class="shop-item">
+                    <div class="shop-item-header">
+                        <p class="shop-item-name">${escapeHtml(listing.items.name)}</p>
+                        <span class="rarity-badge rarity-${listing.items.rarity}">${listing.items.rarity}</span>
+                    </div>
+                    <p class="shop-item-quantity">Qty: ${listing.quantity}</p>
+                    <p class="shop-item-price">💰 ${listing.price}</p>
+                    <p style="font-size: 0.85rem; color: #666; margin-bottom: 0.5rem;">Seller: ${escapeHtml(listing.accounts.name)}</p>
+                    ${isOwnListing 
+                        ? `<button class="btn btn-secondary btn-small" onclick="cancelListing('${listing.id}', '${listing.item_id}', ${listing.quantity})">Cancel Sale</button>`
+                        : `<button class="btn btn-primary btn-small" onclick="buyListing('${listing.id}', ${listing.price}, '${listing.item_id}', '${listing.seller_id}')">Buy</button>`
+                    }
+                </div>
+            `;
+        }).join('');
     } catch (error) {
         console.error('Error loading shop:', error);
         showNotification('Failed to load marketplace', 'error');
     }
 }
 
-async function populateItemSelect() {
+async function openSellModal() {
     if (!currentUser) return;
 
     try {
-        const { data: inventory } = await supabaseClient
+        // Get user's inventory
+        const { data: inventory, error } = await supabaseClient
             .from('inventory')
-            .select('id, quantity, items(id, name, rarity), item_id')
+            .select('id, quantity, items(id, name), item_id')
             .eq('account_id', currentUser.id);
 
-        const select = document.getElementById('item-select');
+        if (error) throw error;
+
+        const select = document.getElementById('sell-item-select');
+        select.innerHTML = '<option value="">Choose an item...</option>';
+
         if (!inventory || inventory.length === 0) {
-            select.innerHTML = '<option value="">No items to sell</option>';
-            return;
+            select.innerHTML = '<option value="">You have no items to sell</option>';
+            select.disabled = true;
+        } else {
+            inventory.forEach(inv => {
+                const option = document.createElement('option');
+                option.value = inv.item_id;
+                option.dataset.inventoryId = inv.id;
+                option.dataset.quantity = inv.quantity;
+                option.dataset.itemName = inv.items.name;
+                option.textContent = `${inv.items.name} (${inv.quantity} available)`;
+                select.appendChild(option);
+            });
+            select.disabled = false;
+
+            // Update quantity display on select change
+            select.addEventListener('change', function() {
+                const selected = this.options[this.selectedIndex];
+                const quantityEl = document.getElementById('sell-item-quantity');
+                if (selected.value) {
+                    quantityEl.textContent = `Available: ${selected.dataset.quantity}`;
+                } else {
+                    quantityEl.textContent = '';
+                }
+            });
         }
 
-        select.innerHTML = '<option value="">Select item to sell...</option>';
-        inventory.forEach(inv => {
-            const option = document.createElement('option');
-            option.value = inv.id;
-            option.dataset.itemId = inv.item_id;
-            option.dataset.quantity = inv.quantity;
-            option.textContent = `${inv.items.name} (${inv.quantity} available)`;
-            select.appendChild(option);
-        });
+        document.getElementById('sell-price-input').value = '';
+        document.getElementById('sell-modal').style.display = 'flex';
     } catch (error) {
-        console.error('Error populating item select:', error);
+        console.error('Error opening sell modal:', error);
+        showNotification('Failed to open sell dialog', 'error');
     }
 }
 
-async function createListing() {
+function closeSellModal() {
+    document.getElementById('sell-modal').style.display = 'none';
+}
+
+async function submitSellItem() {
     if (!currentUser) return;
 
-    const select = document.getElementById('item-select');
-    const priceInput = document.getElementById('price-input');
+    const select = document.getElementById('sell-item-select');
+    const priceInput = document.getElementById('sell-price-input');
     const selectedOption = select.options[select.selectedIndex];
 
     if (!selectedOption.value) {
@@ -618,43 +669,41 @@ async function createListing() {
         return;
     }
 
-    if (!priceInput.value || priceInput.value < 1) {
+    const price = parseInt(priceInput.value);
+    if (!price || price < 1) {
         showNotification('Please enter a valid price', 'warning');
         return;
     }
 
     try {
-        const inventoryId = selectedOption.value;
-        const itemId = selectedOption.dataset.itemId;
-        const price = parseInt(priceInput.value);
+        const itemId = selectedOption.value;
+        const inventoryId = selectedOption.dataset.inventoryId;
+        const quantity = parseInt(selectedOption.dataset.quantity);
 
-        // Create listing that expires in 3 days
-        const expiresAt = new Date();
-        expiresAt.setDate(expiresAt.getDate() + 3);
-
-        const { error: listingError } = await supabaseClient
-            .from('player_listings')
+        // Create shop listing
+        const { error: insertError } = await supabaseClient
+            .from('shop')
             .insert([{
                 seller_id: currentUser.id,
                 item_id: itemId,
                 quantity: 1,
-                price_per_unit: price,
-                expires_at: expiresAt.toISOString()
+                price: price
             }]);
 
-        if (listingError) throw listingError;
+        if (insertError) {
+            if (insertError.code === '23505') {
+                showNotification('You already have this item listed for sale', 'warning');
+            } else {
+                throw insertError;
+            }
+            return;
+        }
 
-        // Remove item from inventory
-        const { data: invItem } = await supabaseClient
-            .from('inventory')
-            .select('quantity')
-            .eq('id', inventoryId)
-            .single();
-
-        if (invItem.quantity > 1) {
+        // Remove 1 from inventory
+        if (quantity > 1) {
             await supabaseClient
                 .from('inventory')
-                .update({ quantity: invItem.quantity - 1 })
+                .update({ quantity: quantity - 1 })
                 .eq('id', inventoryId);
         } else {
             await supabaseClient
@@ -663,102 +712,75 @@ async function createListing() {
                 .eq('id', inventoryId);
         }
 
-        showNotification('Item listed for sale! Expires in 3 days.', 'success');
-        priceInput.value = '';
-        select.value = '';
+        showNotification('Item listed for sale!', 'success');
+        closeSellModal();
         await loadUserData();
         await loadShop();
     } catch (error) {
-        console.error('Error creating listing:', error);
-        showNotification('Failed to create listing', 'error');
+        console.error('Error selling item:', error);
+        showNotification('Failed to list item', 'error');
     }
 }
 
-async function loadMyListings() {
+async function cancelListing(listingId, itemId, quantity) {
     if (!currentUser) return;
 
     try {
-        // Check for expired listings and return them to inventory
-        await handleExpiredListings();
+        // Delete listing
+        const { error: deleteError } = await supabaseClient
+            .from('shop')
+            .delete()
+            .eq('id', listingId);
 
-        const { data: listings } = await supabaseClient
-            .from('player_listings')
-            .select('id, item_id, quantity, price_per_unit, expires_at, sold_at, items(name, rarity)')
-            .eq('seller_id', currentUser.id)
-            .filter('sold_at', 'is', null)
-            .gt('expires_at', new Date().toISOString())
-            .order('created_at', { ascending: false });
+        if (deleteError) throw deleteError;
 
-        const myListingsDisplay = document.getElementById('my-listings-display');
-        if (!listings || listings.length === 0) {
-            myListingsDisplay.innerHTML = '<p class="empty-message">No active listings</p>';
-            return;
+        // Return item to inventory
+        const { data: existing } = await supabaseClient
+            .from('inventory')
+            .select('id, quantity')
+            .eq('account_id', currentUser.id)
+            .eq('item_id', itemId)
+            .single();
+
+        if (existing) {
+            await supabaseClient
+                .from('inventory')
+                .update({ quantity: existing.quantity + quantity })
+                .eq('id', existing.id);
+        } else {
+            await supabaseClient
+                .from('inventory')
+                .insert([{ account_id: currentUser.id, item_id: itemId, quantity: quantity }]);
         }
 
-        myListingsDisplay.innerHTML = listings.map(listing => {
-            const expiresAt = new Date(listing.expires_at);
-            const now = new Date();
-            const hoursLeft = Math.ceil((expiresAt - now) / (1000 * 60 * 60));
-
-            return `
-                <div class="shop-item">
-                    <div class="shop-item-header">
-                        <p class="shop-item-name">${escapeHtml(listing.items.name)}</p>
-                        <span class="rarity-badge rarity-${listing.items.rarity}">${listing.items.rarity}</span>
-                    </div>
-                    <p class="shop-item-price">💰 ${listing.price_per_unit}</p>
-                    <p class="shop-item-quantity">Expires in ${hoursLeft}h</p>
-                    <button class="btn btn-secondary btn-small" onclick="cancelListing('${listing.id}', '${listing.item_id}')">Cancel</button>
-                </div>
-            `;
-        }).join('');
+        showNotification('Sale cancelled, item returned to inventory', 'success');
+        await loadUserData();
+        await loadShop();
     } catch (error) {
-        console.error('Error loading my listings:', error);
+        console.error('Error cancelling listing:', error);
+        showNotification('Failed to cancel sale', 'error');
     }
 }
 
-async function loadMarketListings() {
-    if (!currentUser) return;
-
-    try {
-        const { data: listings } = await supabaseClient
-            .from('player_listings')
-            .select('id, seller_id, item_id, quantity, price_per_unit, expires_at, sold_at, items(name, rarity), accounts!player_listings_seller_id_fkey(name)')
-            .gt('expires_at', new Date().toISOString())
-            .filter('sold_at', 'is', null)
-            .neq('seller_id', currentUser.id)
-            .order('created_at', { ascending: false });
-
-        const marketDisplay = document.getElementById('market-listings-display');
-        if (!listings || listings.length === 0) {
-            marketDisplay.innerHTML = '<p class="empty-message">No items available in marketplace</p>';
-            return;
-        }
-
-        marketDisplay.innerHTML = listings.map(listing => {
-            return `
-                <div class="shop-item">
-                    <div class="shop-item-header">
-                        <p class="shop-item-name">${escapeHtml(listing.items.name)}</p>
-                        <span class="rarity-badge rarity-${listing.items.rarity}">${listing.items.rarity}</span>
-                    </div>
-                    <p class="shop-item-quantity">Seller: ${escapeHtml(listing.accounts.name)}</p>
-                    <p class="shop-item-price">💰 ${listing.price_per_unit}</p>
-                    <button class="btn btn-primary btn-small" onclick="buyFromPlayer('${listing.id}', ${listing.price_per_unit}, '${listing.item_id}', '${listing.seller_id}')">Buy</button>
-                </div>
-            `;
-        }).join('');
-    } catch (error) {
-        console.error('Error loading market listings:', error);
-    }
-}
-
-async function buyFromPlayer(listingId, price, itemId, sellerId) {
+async function buyListing(listingId, price, itemId, sellerId) {
     if (!currentUser || !userAccount) return;
 
     try {
         if (userAccount.money < price) {
             showNotification('Not enough money', 'error');
+            return;
+        }
+
+        // Verify listing still exists (security check)
+        const { data: listing, error: checkError } = await supabaseClient
+            .from('shop')
+            .select('id')
+            .eq('id', listingId)
+            .single();
+
+        if (checkError || !listing) {
+            showNotification('This item was already sold', 'error');
+            await loadShop();
             return;
         }
 
@@ -799,10 +821,21 @@ async function buyFromPlayer(listingId, price, itemId, sellerId) {
                 .insert([{ account_id: currentUser.id, item_id: itemId, quantity: 1 }]);
         }
 
-        // Mark listing as sold (instead of deleting)
+        // Record transaction
         await supabaseClient
-            .from('player_listings')
-            .update({ sold_at: new Date().toISOString() })
+            .from('transactions')
+            .insert([{
+                buyer_id: currentUser.id,
+                seller_id: sellerId,
+                item_id: itemId,
+                quantity: 1,
+                price: price
+            }]);
+
+        // Delete listing
+        await supabaseClient
+            .from('shop')
+            .delete()
             .eq('id', listingId);
 
         showNotification('Item purchased!', 'success');
@@ -811,101 +844,6 @@ async function buyFromPlayer(listingId, price, itemId, sellerId) {
     } catch (error) {
         console.error('Error buying item:', error);
         showNotification('Failed to purchase item', 'error');
-    }
-}
-
-async function cancelListing(listingId, itemId) {
-    if (!currentUser) return;
-
-    try {
-        // Get listing details
-        const { data: listing } = await supabaseClient
-            .from('player_listings')
-            .select('quantity')
-            .eq('id', listingId)
-            .single();
-
-        // Return item to inventory
-        const { data: existing } = await supabaseClient
-            .from('inventory')
-            .select('id, quantity')
-            .eq('account_id', currentUser.id)
-            .eq('item_id', itemId)
-            .single();
-
-        if (existing) {
-            await supabaseClient
-                .from('inventory')
-                .update({ quantity: existing.quantity + listing.quantity })
-                .eq('id', existing.id);
-        } else {
-            await supabaseClient
-                .from('inventory')
-                .insert([{ account_id: currentUser.id, item_id: itemId, quantity: listing.quantity }]);
-        }
-
-        // Delete listing
-        await supabaseClient
-            .from('player_listings')
-            .delete()
-            .eq('id', listingId);
-
-        showNotification('Listing cancelled', 'success');
-        await loadUserData();
-        await loadShop();
-    } catch (error) {
-        console.error('Error cancelling listing:', error);
-        showNotification('Failed to cancel listing', 'error');
-    }
-}
-
-async function handleExpiredListings() {
-    if (!currentUser) return;
-
-    try {
-        const now = new Date().toISOString();
-
-        // Get expired listings that haven't been sold
-        const { data: expiredListings } = await supabaseClient
-            .from('player_listings')
-            .select('id, seller_id, item_id, quantity')
-            .lt('expires_at', now)
-            .filter('sold_at', 'is', null);
-
-        if (!expiredListings || expiredListings.length === 0) return;
-
-        // Return each expired listing to owner's inventory
-        for (const listing of expiredListings) {
-            const { data: existing } = await supabaseClient
-                .from('inventory')
-                .select('id, quantity')
-                .eq('account_id', listing.seller_id)
-                .eq('item_id', listing.item_id)
-                .single();
-
-            if (existing) {
-                await supabaseClient
-                    .from('inventory')
-                    .update({ quantity: existing.quantity + listing.quantity })
-                    .eq('id', existing.id);
-            } else {
-                await supabaseClient
-                    .from('inventory')
-                    .insert([{ account_id: listing.seller_id, item_id: listing.item_id, quantity: listing.quantity }]);
-            }
-
-            // Delete expired listing
-            await supabaseClient
-                .from('player_listings')
-                .delete()
-                .eq('id', listing.id);
-        }
-
-        if (expiredListings.some(l => l.seller_id === currentUser.id)) {
-            showNotification('Some of your listings expired and were returned to inventory', 'info');
-        }
-    } catch (error) {
-        console.error('Error handling expired listings:', error);
     }
 }
 

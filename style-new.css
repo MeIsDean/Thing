@@ -398,63 +398,6 @@ body {
 }
 
 /* Shop */
-.shop-tabs {
-    display: flex;
-    gap: 0.5rem;
-    margin-bottom: 1.5rem;
-    border-bottom: 2px solid var(--border);
-}
-
-.shop-tab-btn {
-    background: none;
-    border: none;
-    padding: 1rem;
-    font-size: 1rem;
-    cursor: pointer;
-    color: var(--text-light);
-    border-bottom: 3px solid transparent;
-    transition: all 0.2s;
-    font-weight: 600;
-}
-
-.shop-tab-btn.active {
-    color: var(--primary);
-    border-bottom-color: var(--primary);
-}
-
-.shop-section {
-    display: none;
-}
-
-.shop-section.active {
-    display: block;
-}
-
-.listing-controls {
-    margin-bottom: 1.5rem;
-    background: var(--bg-white);
-    padding: 1rem;
-    border-radius: 0.75rem;
-    border: 1px solid var(--border);
-}
-
-.listing-controls .input-group {
-    display: flex;
-    flex-direction: column;
-    gap: 0.75rem;
-}
-
-@media (min-width: 768px) {
-    .listing-controls .input-group {
-        flex-direction: row;
-    }
-}
-
-.input-group .input-field,
-.input-group select {
-    flex: 1;
-}
-
 .shop-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
