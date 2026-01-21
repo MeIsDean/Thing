@@ -496,24 +496,76 @@ async function loadFriends() {
     if (!currentUser) return;
 
     try {
-        const { data: friends } = await supabaseClient
+        // Load accepted friends
+        const { data: acceptedFriends } = await supabaseClient
             .from('friends')
-            .select('id, friend_id, accounts!friends_friend_id_fkey(name)')
-            .eq('user_id', currentUser.id)
-            .eq('status', 'accepted');
+            .select('id, requester_id, recipient_id, accounts_requester:accounts!friends_requester_id_fkey(name), accounts_recipient:accounts!friends_recipient_id_fkey(name)')
+            .eq('status', 'accepted')
+            .or(`requester_id.eq.${currentUser.id},recipient_id.eq.${currentUser.id}`);
+
+        // Load pending requests (where I'm the recipient)
+        const { data: pendingRequests } = await supabaseClient
+            .from('friends')
+            .select('id, requester_id, accounts!friends_requester_id_fkey(name)')
+            .eq('recipient_id', currentUser.id)
+            .eq('status', 'pending');
+
+        // Load pending requests (where I'm the requester)
+        const { data: sentRequests } = await supabaseClient
+            .from('friends')
+            .select('id, recipient_id, accounts!friends_recipient_id_fkey(name)')
+            .eq('requester_id', currentUser.id)
+            .eq('status', 'pending');
 
         const friendsDisplay = document.getElementById('friends-display');
+        let html = '';
 
-        if (!friends || friends.length === 0) {
-            friendsDisplay.innerHTML = '<p class="empty-message">No friends yet</p>';
-        } else {
-            friendsDisplay.innerHTML = friends.map(f => `
-                <div class="friend-item">
-                    <p class="friend-name">${escapeHtml(f.accounts.name)}</p>
-                    <button class="btn btn-danger btn-small" onclick="removeFriend('${f.id}')">Remove</button>
+        // Show received requests
+        if (pendingRequests && pendingRequests.length > 0) {
+            html += '<div style="margin-bottom: 2rem;"><h4>Friend Requests</h4>';
+            html += pendingRequests.map(req => `
+                <div class="friend-item" style="display: flex; justify-content: space-between; align-items: center;">
+                    <p class="friend-name">${escapeHtml(req.accounts.name)} (wants to add you)</p>
+                    <div style="display: flex; gap: 0.5rem;">
+                        <button class="btn btn-primary btn-small" onclick="acceptFriendRequest('${req.id}')">Accept</button>
+                        <button class="btn btn-secondary btn-small" onclick="rejectFriendRequest('${req.id}')">Reject</button>
+                    </div>
                 </div>
-            `).join('');
+            `).join('') + '</div>';
         }
+
+        // Show sent requests
+        if (sentRequests && sentRequests.length > 0) {
+            html += '<div style="margin-bottom: 2rem;"><h4>Pending Requests</h4>';
+            html += sentRequests.map(req => `
+                <div class="friend-item" style="display: flex; justify-content: space-between; align-items: center;">
+                    <p class="friend-name">${escapeHtml(req.accounts.name)} (request sent)</p>
+                    <button class="btn btn-secondary btn-small" onclick="cancelFriendRequest('${req.id}')">Cancel</button>
+                </div>
+            `).join('') + '</div>';
+        }
+
+        // Show accepted friends
+        if (acceptedFriends && acceptedFriends.length > 0) {
+            html += '<div><h4>Friends</h4>';
+            html += acceptedFriends.map(friendship => {
+                const friendData = friendship.requester_id === currentUser.id 
+                    ? friendship.accounts_recipient 
+                    : friendship.accounts_requester;
+                return `
+                    <div class="friend-item" style="display: flex; justify-content: space-between; align-items: center;">
+                        <p class="friend-name">${escapeHtml(friendData.name)}</p>
+                        <button class="btn btn-danger btn-small" onclick="removeFriend('${friendship.id}')">Remove</button>
+                    </div>
+                `;
+            }).join('') + '</div>';
+        }
+
+        if (!html) {
+            html = '<p class="empty-message">No friends yet</p>';
+        }
+
+        friendsDisplay.innerHTML = html;
     } catch (error) {
         console.error('Error loading friends:', error);
     }
@@ -543,32 +595,82 @@ async function addFriend() {
             return;
         }
 
-        // Check if already friends
+        // Check if request already exists
         const { data: existing } = await supabaseClient
             .from('friends')
             .select('id')
-            .eq('user_id', currentUser.id)
-            .eq('friend_id', user.id);
+            .or(`and(requester_id.eq.${currentUser.id},recipient_id.eq.${user.id}),and(requester_id.eq.${user.id},recipient_id.eq.${currentUser.id})`);
 
         if (existing && existing.length > 0) {
-            showNotification('Already friends', 'warning');
+            showNotification('Request already exists', 'warning');
             return;
         }
 
-        // Add friend
+        // Send friend request
         await supabaseClient
             .from('friends')
             .insert([{
-                user_id: currentUser.id,
-                friend_id: user.id,
-                status: 'accepted'
+                requester_id: currentUser.id,
+                recipient_id: user.id,
+                status: 'pending'
             }]);
 
-        showNotification('Friend added!', 'success');
+        showNotification('Friend request sent!', 'success');
         await loadFriends();
     } catch (error) {
         console.error('Error adding friend:', error);
-        showNotification('Failed to add friend', 'error');
+        showNotification('Failed to send request', 'error');
+    }
+}
+
+async function acceptFriendRequest(friendshipId) {
+    if (!currentUser) return;
+
+    try {
+        await supabaseClient
+            .from('friends')
+            .update({ status: 'accepted', updated_at: new Date().toISOString() })
+            .eq('id', friendshipId);
+
+        showNotification('Friend request accepted!', 'success');
+        await loadFriends();
+    } catch (error) {
+        console.error('Error accepting request:', error);
+        showNotification('Failed to accept request', 'error');
+    }
+}
+
+async function rejectFriendRequest(friendshipId) {
+    if (!currentUser) return;
+
+    try {
+        await supabaseClient
+            .from('friends')
+            .delete()
+            .eq('id', friendshipId);
+
+        showNotification('Friend request rejected', 'success');
+        await loadFriends();
+    } catch (error) {
+        console.error('Error rejecting request:', error);
+        showNotification('Failed to reject request', 'error');
+    }
+}
+
+async function cancelFriendRequest(friendshipId) {
+    if (!currentUser) return;
+
+    try {
+        await supabaseClient
+            .from('friends')
+            .delete()
+            .eq('id', friendshipId);
+
+        showNotification('Friend request cancelled', 'success');
+        await loadFriends();
+    } catch (error) {
+        console.error('Error cancelling request:', error);
+        showNotification('Failed to cancel request', 'error');
     }
 }
 

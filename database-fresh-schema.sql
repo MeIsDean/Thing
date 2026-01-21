@@ -30,7 +30,20 @@ CREATE TABLE shop (
   CONSTRAINT owner_type_unique UNIQUE(owner_id, type_id)
 );
 
--- Step 4: Optional - transactions table for history (read-only)
+-- Step 4: Create friends table with request/accept flow
+DROP TABLE IF EXISTS friends CASCADE;
+CREATE TABLE friends (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  requester_id UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+  recipient_id UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'accepted', 'rejected')),
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW(),
+  CONSTRAINT no_self_friend CHECK (requester_id != recipient_id),
+  CONSTRAINT unique_friendship UNIQUE(requester_id, recipient_id)
+);
+
+-- Step 5: Optional - transactions table for history (read-only)
 DROP TABLE IF EXISTS transactions CASCADE;
 CREATE TABLE transactions (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -45,6 +58,7 @@ CREATE TABLE transactions (
 ALTER TABLE type ENABLE ROW LEVEL SECURITY;
 ALTER TABLE inventory ENABLE ROW LEVEL SECURITY;
 ALTER TABLE shop ENABLE ROW LEVEL SECURITY;
+ALTER TABLE friends ENABLE ROW LEVEL SECURITY;
 ALTER TABLE transactions ENABLE ROW LEVEL SECURITY;
 
 -- Step 6: RLS Policies - type (public read)
@@ -71,22 +85,38 @@ CREATE POLICY "Users can create their listings" ON shop FOR INSERT WITH CHECK (o
 DROP POLICY IF EXISTS "Users can delete their listings" ON shop;
 CREATE POLICY "Users can delete their listings" ON shop FOR DELETE USING (true);
 
--- Step 9: RLS Policies - transactions (view own transactions)
+-- Step 9: RLS Policies - friends (users can manage their own requests)
+DROP POLICY IF EXISTS "Users can view friend requests" ON friends;
+CREATE POLICY "Users can view friend requests" ON friends FOR SELECT USING (requester_id = auth.uid() OR recipient_id = auth.uid());
+
+DROP POLICY IF EXISTS "Users can create friend requests" ON friends;
+CREATE POLICY "Users can create friend requests" ON friends FOR INSERT WITH CHECK (requester_id = auth.uid());
+
+DROP POLICY IF EXISTS "Users can accept/reject friend requests" ON friends;
+CREATE POLICY "Users can accept/reject friend requests" ON friends FOR UPDATE USING (recipient_id = auth.uid());
+
+DROP POLICY IF EXISTS "Users can delete friend requests" ON friends;
+CREATE POLICY "Users can delete friend requests" ON friends FOR DELETE USING (requester_id = auth.uid() OR recipient_id = auth.uid());
+
+-- Step 10: RLS Policies - transactions (view own transactions)
 DROP POLICY IF EXISTS "Users can view own transactions" ON transactions;
 CREATE POLICY "Users can view own transactions" ON transactions FOR SELECT USING (buyer_id = auth.uid() OR seller_id = auth.uid());
 
 DROP POLICY IF EXISTS "System can create transactions" ON transactions;
 CREATE POLICY "System can create transactions" ON transactions FOR INSERT WITH CHECK (buyer_id = auth.uid());
 
--- Step 10: Create indexes
+-- Step 11: Create indexes
 CREATE INDEX IF NOT EXISTS idx_inventory_account_id ON inventory(account_id);
 CREATE INDEX IF NOT EXISTS idx_inventory_type_id ON inventory(type_id);
 CREATE INDEX IF NOT EXISTS idx_shop_owner_id ON shop(owner_id);
 CREATE INDEX IF NOT EXISTS idx_shop_type_id ON shop(type_id);
+CREATE INDEX IF NOT EXISTS idx_friends_requester_id ON friends(requester_id);
+CREATE INDEX IF NOT EXISTS idx_friends_recipient_id ON friends(recipient_id);
+CREATE INDEX IF NOT EXISTS idx_friends_status ON friends(status);
 CREATE INDEX IF NOT EXISTS idx_transactions_buyer_id ON transactions(buyer_id);
 CREATE INDEX IF NOT EXISTS idx_transactions_seller_id ON transactions(seller_id);
 
--- Step 11: Create trigger to delete shop listing when transaction is created
+-- Step 12: Create trigger to delete shop listing when transaction is created
 DROP FUNCTION IF EXISTS delete_shop_on_purchase() CASCADE;
 CREATE FUNCTION delete_shop_on_purchase()
 RETURNS TRIGGER AS $$
@@ -103,7 +133,7 @@ AFTER INSERT ON transactions
 FOR EACH ROW
 EXECUTE FUNCTION delete_shop_on_purchase();
 
--- Step 12: Insert sample types (if they don't exist)
+-- Step 13: Insert sample types (if they don't exist)
 INSERT INTO type (name, rarity, description) VALUES
   ('Common Sword', 'common', 'A basic iron sword'),
   ('Wooden Shield', 'common', 'A sturdy wooden shield'),
