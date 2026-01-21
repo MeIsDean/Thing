@@ -1,13 +1,5 @@
 {
-  "buildCommand": "node build.js",
+  "buildCommand": "echo 'No build needed'",
   "outputDirectory": ".",
-  "framework": "static",
-  "env": {
-    "REACT_APP_SUPABASE_URL": {
-      "description": "Your Supabase project URL"
-    },
-    "REACT_APP_SUPABASE_ANON_KEY": {
-      "description": "Your Supabase anonymous key"
-    }
-  }
+  "framework": "static"
 }
