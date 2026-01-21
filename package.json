@@ -1,0 +1,20 @@
+{
+  "name": "game-dashboard",
+  "version": "1.0.0",
+  "description": "Game dashboard with Google login and Supabase",
+  "main": "index.html",
+  "scripts": {
+    "dev": "python -m http.server 3000",
+    "build": "echo 'Static site - no build needed'",
+    "start": "python -m http.server 3000"
+  },
+  "keywords": [
+    "game",
+    "dashboard",
+    "supabase",
+    "google-oauth"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {}
+}
