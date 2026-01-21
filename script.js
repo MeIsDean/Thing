@@ -653,10 +653,10 @@ async function deleteAccount() {
 // TAB SWITCHING
 function switchTab(tab) {
     currentTab = tab;
-    document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+    document.querySelectorAll('.nav-btn').forEach(btn => btn.classList.remove('active'));
     document.querySelector(`[data-tab="${tab}"]`).classList.add('active');
 
-    document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+    document.querySelectorAll('.tab-pane').forEach(pane => pane.classList.remove('active'));
     document.getElementById(`${tab}-tab`).classList.add('active');
 
     // Reload data for the tab
