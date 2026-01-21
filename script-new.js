@@ -427,15 +427,6 @@ function showLoginError(message) {
     errorEl.style.display = 'block';
 }
 
-function showLogoutConfirm() {
-    pendingAction = 'logout';
-    document.getElementById('modal-title').textContent = 'Sign Out';
-    document.getElementById('modal-message').textContent = 'Are you sure you want to sign out?';
-    document.getElementById('modal-confirm-btn').textContent = 'Sign Out';
-    document.getElementById('modal-confirm-btn').className = 'btn btn-secondary';
-    document.getElementById('confirmation-modal').style.display = 'flex';
-}
-
 function showDeleteConfirm() {
     pendingAction = 'delete_account';
     document.getElementById('modal-title').textContent = 'Delete Account';
@@ -448,8 +439,6 @@ function showDeleteConfirm() {
 function confirmAction() {
     if (pendingAction === 'delete_account') {
         deleteAccount();
-    } else if (pendingAction === 'logout') {
-        logout();
     }
     closeModal();
 }
