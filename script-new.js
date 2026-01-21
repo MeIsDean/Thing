@@ -685,7 +685,7 @@ async function loadMyListings() {
             .from('player_listings')
             .select('id, item_id, quantity, price_per_unit, expires_at, sold_at, items(name, rarity)')
             .eq('seller_id', currentUser.id)
-            .is('sold_at', null)
+            .filter('sold_at', 'is', null)
             .gt('expires_at', new Date().toISOString())
             .order('created_at', { ascending: false });
 
@@ -725,7 +725,7 @@ async function loadMarketListings() {
             .from('player_listings')
             .select('id, seller_id, item_id, quantity, price_per_unit, expires_at, sold_at, items(name, rarity), accounts!player_listings_seller_id_fkey(name)')
             .gt('expires_at', new Date().toISOString())
-            .is('sold_at', null)
+            .filter('sold_at', 'is', null)
             .neq('seller_id', currentUser.id)
             .order('created_at', { ascending: false });
 
@@ -870,7 +870,7 @@ async function handleExpiredListings() {
             .from('player_listings')
             .select('id, seller_id, item_id, quantity')
             .lt('expires_at', now)
-            .is('sold_at', null);
+            .filter('sold_at', 'is', null);
 
         if (!expiredListings || expiredListings.length === 0) return;
 
