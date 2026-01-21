@@ -152,8 +152,8 @@ async function loadUserData() {
 
         // Update UI
         document.getElementById('user-name').textContent = userAccount.name;
-        document.getElementById('user-money').textContent = userAccount.money;
-        document.getElementById('user-xp').textContent = userAccount.xp;
+        document.getElementById('money-display').textContent = userAccount.money;
+        document.getElementById('xp-display').textContent = userAccount.xp;
 
         // Load all tab data
         await loadHome();
@@ -165,7 +165,6 @@ async function loadUserData() {
     }
 }
 
-// HOME TAB
 async function loadHome() {
     if (!currentUser) return;
 
@@ -177,14 +176,16 @@ async function loadHome() {
 
         if (timeSinceLastCollection >= cooldownMs) {
             document.getElementById('collect-btn').disabled = false;
-            document.getElementById('collect-btn').textContent = 'Collect Item!';
-            document.getElementById('collect-timer').textContent = '';
+            document.getElementById('collect-btn').textContent = '<i class="bi bi-gift"></i> Collect Now';
+            document.getElementById('collection-status').textContent = 'Ready to collect!';
+            document.getElementById('collection-time').textContent = '';
         } else {
             const remainingMs = cooldownMs - timeSinceLastCollection;
             const remainingHours = Math.ceil(remainingMs / (60 * 60 * 1000));
             document.getElementById('collect-btn').disabled = true;
-            document.getElementById('collect-btn').textContent = 'Collect Item!';
-            document.getElementById('collect-timer').textContent = `Next in ${remainingHours}h`;
+            document.getElementById('collect-btn').textContent = '<i class="bi bi-gift"></i> Collect Now';
+            document.getElementById('collection-status').textContent = 'Item collected!';
+            document.getElementById('collection-time').textContent = `Next in ${remainingHours}h`;
         }
     } catch (error) {
         console.error('Error loading home:', error);
@@ -228,8 +229,6 @@ async function collectItem() {
         showNotification('Failed to collect item', 'error');
     }
 }
-
-// INVENTORY TAB
 async function loadInventory() {
     if (!currentUser) return;
 
@@ -254,7 +253,6 @@ async function loadInventory() {
                     <span class="rarity-badge rarity-${item.type.rarity}">${item.type.rarity}</span>
                 </div>
                 <p class="item-acquired">Acquired: ${new Date(item.acquired_at).toLocaleDateString()}</p>
-                <button class="btn btn-secondary btn-small" onclick="openSellModal('${item.id}', '${item.type.id}', '${escapeHtml(item.type.name)}')">Sell</button>
             </div>
         `).join('');
     } catch (error) {
@@ -303,12 +301,40 @@ async function loadShop() {
     }
 }
 
-async function openSellModal(inventoryId, typeId, typeName) {
-    document.getElementById('sell-item-name').textContent = typeName;
-    document.getElementById('sell-item-id').value = inventoryId;
-    document.getElementById('sell-type-id').value = typeId;
-    document.getElementById('sell-price-input').value = '';
-    document.getElementById('sell-modal').style.display = 'flex';
+async function openSellModal() {
+    if (!currentUser) return;
+
+    try {
+        // Get user's inventory
+        const { data: items } = await supabaseClient
+            .from('inventory')
+            .select('id, type(id, name), type_id')
+            .eq('account_id', currentUser.id);
+
+        const select = document.getElementById('sell-item-select');
+        select.innerHTML = '<option value="">Choose an item...</option>';
+
+        if (!items || items.length === 0) {
+            select.innerHTML = '<option value="">You have no items to sell</option>';
+            select.disabled = true;
+        } else {
+            items.forEach(inv => {
+                const option = document.createElement('option');
+                option.value = inv.id;
+                option.dataset.typeId = inv.type_id;
+                option.dataset.typeName = inv.type.name;
+                option.textContent = inv.type.name;
+                select.appendChild(option);
+            });
+            select.disabled = false;
+        }
+
+        document.getElementById('sell-price-input').value = '';
+        document.getElementById('sell-modal').style.display = 'flex';
+    } catch (error) {
+        console.error('Error opening sell modal:', error);
+        showNotification('Failed to open sell dialog', 'error');
+    }
 }
 
 function closeSellModal() {
@@ -318,16 +344,25 @@ function closeSellModal() {
 async function submitSellItem() {
     if (!currentUser) return;
 
-    const inventoryId = document.getElementById('sell-item-id').value;
-    const typeId = document.getElementById('sell-type-id').value;
-    const price = parseInt(document.getElementById('sell-price-input').value);
+    const select = document.getElementById('sell-item-select');
+    const priceInput = document.getElementById('sell-price-input');
+    const selectedOption = select.options[select.selectedIndex];
 
+    if (!selectedOption.value) {
+        showNotification('Please select an item', 'warning');
+        return;
+    }
+
+    const price = parseInt(priceInput.value);
     if (!price || price < 1) {
         showNotification('Please enter a valid price', 'warning');
         return;
     }
 
     try {
+        const inventoryId = selectedOption.value;
+        const typeId = selectedOption.dataset.typeId;
+
         // Create shop listing
         const { error: insertError } = await supabaseClient
             .from('shop')
@@ -471,18 +506,18 @@ async function loadFriends() {
     try {
         const { data: friends } = await supabaseClient
             .from('friends')
-            .select('id, friend_id, friends_accounts!friends_friend_id_fkey(name)')
+            .select('id, friend_id, accounts!friends_friend_id_fkey(name)')
             .eq('user_id', currentUser.id)
             .eq('status', 'accepted');
 
-        const friendsList = document.getElementById('friends-list');
+        const friendsDisplay = document.getElementById('friends-display');
 
         if (!friends || friends.length === 0) {
-            friendsList.innerHTML = '<p class="empty-message">No friends yet</p>';
+            friendsDisplay.innerHTML = '<p class="empty-message">No friends yet</p>';
         } else {
-            friendsList.innerHTML = friends.map(f => `
+            friendsDisplay.innerHTML = friends.map(f => `
                 <div class="friend-item">
-                    <p class="friend-name">${escapeHtml(f.friends_accounts.name)}</p>
+                    <p class="friend-name">${escapeHtml(f.accounts.name)}</p>
                     <button class="btn btn-danger btn-small" onclick="removeFriend('${f.id}')">Remove</button>
                 </div>
             `).join('');
@@ -582,6 +617,10 @@ async function changeUsername() {
         console.error('Error changing username:', error);
         showNotification('Failed to change username', 'error');
     }
+}
+
+async function changeName() {
+    await changeUsername();
 }
 
 async function logout() {
