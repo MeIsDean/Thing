@@ -88,10 +88,17 @@ async function checkAuthStatus() {
 // Login with Google
 async function loginWithGoogle() {
     try {
+        // Determine redirect URL based on current location
+        const redirectUrl = window.location.origin === 'http://localhost:3000' 
+            ? 'http://localhost:3000' 
+            : 'https://thing-steel.vercel.app';
+        
+        console.log('OAuth redirect URL:', redirectUrl);
+        
         const { data, error } = await supabaseClient.auth.signInWithOAuth({
             provider: 'google',
             options: {
-                redirectTo: window.location.origin + '/',
+                redirectTo: redirectUrl,
             },
         });
 
