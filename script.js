@@ -436,14 +436,14 @@ async function buyListing(listingId, price, typeId, sellerId) {
             return;
         }
 
-        // Verify listing still exists
-        const { data: listing } = await supabaseClient
+        // DELETE LISTING FIRST to prevent duplicate purchases
+        const { data: deleted } = await supabaseClient
             .from('shop')
-            .select('id')
+            .delete()
             .eq('id', listingId)
-            .single();
+            .select();
 
-        if (!listing) {
+        if (!deleted || deleted.length === 0) {
             showNotification('This item was already sold', 'error');
             await loadShop();
             return;
@@ -484,12 +484,6 @@ async function buyListing(listingId, price, typeId, sellerId) {
                 type_id: typeId,
                 price: price
             }]);
-
-        // Delete listing
-        await supabaseClient
-            .from('shop')
-            .delete()
-            .eq('id', listingId);
 
         showNotification('Item purchased!', 'success');
         await loadUserData();
