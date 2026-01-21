@@ -832,12 +832,13 @@ async function buyListing(listingId, price, itemId, sellerId) {
                 price: price
             }]);
 
-        // Delete listing from shop (backup in case trigger hasn't run yet)
-        await supabaseClient
+        // Delete listing from shop (backup - RLS will block if not seller)
+        supabaseClient
             .from('shop')
             .delete()
             .eq('seller_id', sellerId)
             .eq('item_id', itemId)
+            .then(() => {})
             .catch(() => {}); // Ignore errors, trigger will handle it
 
         showNotification('Item purchased!', 'success');
