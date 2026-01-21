@@ -699,8 +699,16 @@ async function removeFriend(friendshipId) {
 async function changeUsername() {
     if (!currentUser) return;
 
-    const newName = prompt('Enter new username:', userAccount.name);
-    if (!newName || newName === userAccount.name) return;
+    const newName = document.getElementById('name-input').value.trim();
+    if (!newName) {
+        showNotification('Enter a new name', 'warning');
+        return;
+    }
+
+    if (newName === userAccount.name) {
+        showNotification('That is already your name', 'warning');
+        return;
+    }
 
     try {
         await supabaseClient
@@ -710,10 +718,15 @@ async function changeUsername() {
 
         userAccount.name = newName;
         document.getElementById('user-name').textContent = newName;
+        document.getElementById('name-input').value = '';
         showNotification('Username changed!', 'success');
     } catch (error) {
         console.error('Error changing username:', error);
-        showNotification('Failed to change username', 'error');
+        if (error.message && error.message.includes('unique')) {
+            showNotification('That name is already taken', 'error');
+        } else {
+            showNotification('Failed to change username', 'error');
+        }
     }
 }
 

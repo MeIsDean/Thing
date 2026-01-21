@@ -10,6 +10,9 @@ CREATE TABLE type (
   created_at TIMESTAMP DEFAULT NOW()
 );
 
+-- Step 1b: Ensure accounts table has unique names
+ALTER TABLE accounts ADD CONSTRAINT unique_account_name UNIQUE(name);
+
 -- Step 2: Recreate inventory table - NO quantity, each item is its own row
 DROP TABLE IF EXISTS inventory CASCADE;
 CREATE TABLE inventory (
