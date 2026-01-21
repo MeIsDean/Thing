@@ -821,7 +821,7 @@ async function buyListing(listingId, price, itemId, sellerId) {
                 .insert([{ account_id: currentUser.id, item_id: itemId, quantity: 1 }]);
         }
 
-        // Record transaction
+        // Record transaction (trigger will auto-delete the shop listing)
         await supabaseClient
             .from('transactions')
             .insert([{
@@ -831,12 +831,6 @@ async function buyListing(listingId, price, itemId, sellerId) {
                 quantity: 1,
                 price: price
             }]);
-
-        // Delete listing
-        await supabaseClient
-            .from('shop')
-            .delete()
-            .eq('id', listingId);
 
         showNotification('Item purchased!', 'success');
         await loadUserData();

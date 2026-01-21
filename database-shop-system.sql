@@ -55,4 +55,21 @@ CREATE INDEX IF NOT EXISTS idx_shop_item_id ON shop(item_id);
 CREATE INDEX IF NOT EXISTS idx_transactions_buyer_id ON transactions(buyer_id);
 CREATE INDEX IF NOT EXISTS idx_transactions_seller_id ON transactions(seller_id);
 
+-- Step 7: Create trigger to delete shop listing when purchased
+DROP FUNCTION IF EXISTS delete_shop_listing_on_purchase() CASCADE;
+CREATE FUNCTION delete_shop_listing_on_purchase()
+RETURNS TRIGGER AS $$
+BEGIN
+  -- Delete the shop listing after transaction is created
+  DELETE FROM shop WHERE item_id = NEW.item_id AND seller_id = NEW.seller_id;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trigger_delete_shop_on_purchase ON transactions;
+CREATE TRIGGER trigger_delete_shop_on_purchase
+AFTER INSERT ON transactions
+FOR EACH ROW
+EXECUTE FUNCTION delete_shop_listing_on_purchase();
+
 -- Done! Fresh shop system is ready.
