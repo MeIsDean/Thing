@@ -1,15 +1,38 @@
-// Load environment variables for the app
+// Load environment variables
 window.REACT_APP_SUPABASE_URL = 'https://drqfiendmatvchkbihei.supabase.co';
 window.REACT_APP_SUPABASE_ANON_KEY = 'sb_publishable_Mul1_bZ0SFlEQOBBgyujCw__xDzer_D';
 
-// Supabase Configuration
-// Read from window variables (set above) or use hardcoded values
 const SUPABASE_URL = window.REACT_APP_SUPABASE_URL || '';
 const SUPABASE_ANON_KEY = window.REACT_APP_SUPABASE_ANON_KEY || '';
 
 let currentUser = null;
 let pendingAction = null;
 let supabaseClient = null;
+let currentTab = 'home';
+let userAccount = null;
+
+// Random name generation for new players
+function generateRandomPlayerName() {
+    const adjectives = [
+        'Swift', 'Mighty', 'Clever', 'Bold', 'Wise', 'Brave', 'Keen', 'Agile',
+        'Sharp', 'Quick', 'Steady', 'Silent', 'Lucky', 'Bright', 'Dark', 'Fierce',
+        'Noble', 'Wild', 'Free', 'Pure', 'True', 'Rare', 'Epic', 'Mystic',
+        'Shadow', 'Storm', 'Phoenix', 'Dragon', 'Wolf', 'Eagle', 'Raven', 'Tiger'
+    ];
+
+    const nouns = [
+        'Seeker', 'Wanderer', 'Explorer', 'Guardian', 'Sentinel', 'Knight', 'Ranger',
+        'Warrior', 'Hunter', 'Archer', 'Mage', 'Sage', 'Mystic', 'Oracle', 'Oracle',
+        'Slayer', 'Warden', 'Paladin', 'Rogue', 'Ninja', 'Assassin', 'Barbarian',
+        'Shaman', 'Druid', 'Bard', 'Tracker', 'Scout', 'Spy', 'Champion', 'Hero'
+    ];
+
+    const adjective = adjectives[Math.floor(Math.random() * adjectives.length)];
+    const noun = nouns[Math.floor(Math.random() * nouns.length)];
+    const number = Math.floor(Math.random() * 1000);
+
+    return `${adjective}${noun}${number}`;
+}
 
 // Initialize Supabase
 function initSupabase() {
@@ -18,7 +41,7 @@ function initSupabase() {
             auth: {
                 autoRefreshToken: true,
                 persistSession: true,
-                detectSessionInUrl: true, // This is important for OAuth redirects!
+                detectSessionInUrl: true,
             }
         });
         console.log('Supabase initialized');
@@ -30,392 +53,593 @@ function initSupabase() {
 // Initialize app
 document.addEventListener('DOMContentLoaded', async () => {
     initSupabase();
-    
-    // Check if environment variables are set
+
     if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
-        showLoginError('Please configure your Supabase credentials in environment variables.');
+        showLoginError('Please configure your Supabase credentials.');
         return;
     }
 
     // Event listeners
     document.getElementById('google-login-btn').addEventListener('click', loginWithGoogle);
-    document.getElementById('logout-btn').addEventListener('click', logout);
-    document.getElementById('delete-account-btn').addEventListener('click', showDeleteConfirmation);
 
-    // Listen for auth changes - SET UP FIRST before checking session
-    const unsubscribe = supabaseClient.auth.onAuthStateChange(async (event, session) => {
+    // Wait longer for Supabase to load the stored session from localStorage
+    await new Promise(resolve => setTimeout(resolve, 1000));
+
+    // Check for existing session first (most important for persistence)
+    try {
+        const { data: { session } } = await supabaseClient.auth.getSession();
+        console.log('Checking for existing session on app load...');
+        console.log('Existing session found:', !!session);
+        if (session) {
+            currentUser = session.user;
+            console.log('Restoring logged in user:', currentUser.email);
+            await loadUserData();
+            hideLoadingScreen();
+            showDashboard();
+            
+            // Set up auth listener after restoring session
+            supabaseClient.auth.onAuthStateChange(async (event, newSession) => {
+                console.log('Auth state changed:', event);
+                if (!newSession) {
+                    currentUser = null;
+                    showLoginPage();
+                }
+            });
+            return;
+        }
+    } catch (error) {
+        console.error('Error checking initial session:', error);
+    }
+
+    // If no session, set up auth listener and show login
+    supabaseClient.auth.onAuthStateChange(async (event, session) => {
         console.log('Auth event:', event, 'Session exists:', !!session);
         if (session) {
             currentUser = session.user;
-            console.log('User logged in:', currentUser.email);
+            console.log('User logged in via auth event:', currentUser.email);
             await loadUserData();
+            hideLoadingScreen();
             showDashboard();
         } else {
-            console.log('User logged out or no session');
             currentUser = null;
+            hideLoadingScreen();
             showLoginPage();
         }
     });
 
-    // Give Supabase time to process the redirect, then check session
-    setTimeout(async () => {
-        console.log('Checking auth status after redirect...');
-        await checkAuthStatus();
-    }, 500);
+    hideLoadingScreen();
 });
 
-// Check authentication status
-async function checkAuthStatus() {
-    try {
-        const { data: { session } } = await supabaseClient.auth.getSession();
-        console.log('Checking auth status. Session exists:', !!session);
-        if (session) {
-            currentUser = session.user;
-            console.log('Found existing session for:', currentUser.email);
-            await loadUserData();
-            showDashboard();
-            return true;
-        } else {
-            showLoginPage();
-            return false;
-        }
-    } catch (error) {
-        console.error('Error checking auth status:', error);
-        showLoginPage();
-    }
-}
-
-// Login with Google
+// Google Login
 async function loginWithGoogle() {
     try {
-        // Determine redirect URL based on current location
-        const redirectUrl = window.location.origin === 'http://localhost:3000' 
-            ? 'http://localhost:3000' 
-            : 'https://thing-steel.vercel.app';
-        
-        console.log('OAuth redirect URL:', redirectUrl);
-        
         const { data, error } = await supabaseClient.auth.signInWithOAuth({
             provider: 'google',
             options: {
-                redirectTo: redirectUrl,
-            },
+                redirectTo: window.location.origin
+            }
         });
 
-        if (error) {
-            showLoginError('Failed to sign in: ' + error.message);
-            console.error('OAuth error:', error);
-        }
+        if (error) throw error;
     } catch (error) {
-        showLoginError('An error occurred during sign in.');
         console.error('Login error:', error);
+        showLoginError('Failed to login with Google');
     }
 }
 
-// Logout
-async function logout() {
-    try {
-        await supabaseClient.auth.signOut();
-        currentUser = null;
-        showLoginPage();
-    } catch (error) {
-        console.error('Logout error:', error);
-    }
-}
-
-// Load user data from database
+// Load user data
 async function loadUserData() {
-    if (!currentUser) {
-        console.log('No current user, skipping data load');
-        return;
-    }
+    if (!currentUser) return;
 
     try {
-        console.log('Loading user data for:', currentUser.id);
-        // Get or create account
-        let { data: account, error } = await supabaseClient
+        // Check if account exists
+        const { data: account } = await supabaseClient
             .from('accounts')
             .select('*')
             .eq('id', currentUser.id)
             .single();
 
-        if (error && error.code === 'PGRST116') {
-            console.log('Account does not exist, creating one...');
-            // Account doesn't exist, create one
-            const { data: newAccount, error: createError } = await supabaseClient
+        if (!account) {
+            // Create new account
+            const newName = generateRandomPlayerName();
+            await supabaseClient
                 .from('accounts')
-                .insert([{
-                    id: currentUser.id,
-                    name: 'Player',
-                    money: 0,
-                    xp: 0,
-                }])
-                .select()
-                .single();
-
-            if (createError) {
-                console.error('Error creating account:', createError);
-                throw createError;
-            }
-            account = newAccount;
-            console.log('Account created successfully');
-        } else if (error) {
-            console.error('Error fetching account:', error);
-            throw error;
+                .insert([{ id: currentUser.id, name: newName, money: 100, xp: 0 }]);
+            userAccount = { id: currentUser.id, name: newName, money: 100, xp: 0 };
+        } else {
+            userAccount = account;
         }
-
-        console.log('Account loaded:', account);
-
-        // Get inventory with item details
-        const { data: inventory, error: invError } = await supabaseClient
-            .from('inventory')
-            .select('id, quantity, acquired_at, items(id, name, rarity, description)')
-            .eq('account_id', currentUser.id);
-
-        if (invError) {
-            console.error('Error fetching inventory:', invError);
-            throw invError;
-        }
-
-        console.log('Inventory loaded, items:', inventory?.length || 0);
 
         // Update UI
-        document.getElementById('user-name').textContent = account.name || 'Player';
-        updateStatsDisplay(account);
-        updateInventoryDisplay(inventory || []);
-        console.log('UI updated successfully');
+        document.getElementById('user-name').textContent = userAccount.name;
+        document.getElementById('user-money').textContent = userAccount.money;
+        document.getElementById('user-xp').textContent = userAccount.xp;
+
+        // Load all tab data
+        await loadHome();
+        await loadInventory();
+        await loadShop();
+        await loadFriends();
     } catch (error) {
         console.error('Error loading user data:', error);
     }
 }
 
-// Add XP (replaces score)
-async function addXP(amount) {
+// HOME TAB
+async function loadHome() {
     if (!currentUser) return;
 
     try {
-        const { data: account } = await supabaseClient
-            .from('accounts')
-            .select('xp')
-            .eq('id', currentUser.id)
-            .single();
+        const now = new Date();
+        const lastCollected = new Date(userAccount.last_collected || 0);
+        const cooldownMs = 3 * 60 * 60 * 1000; // 3 hours
+        const timeSinceLastCollection = now - lastCollected;
 
-        const newXP = (account?.xp || 0) + amount;
-
-        const { error } = await supabaseClient
-            .from('accounts')
-            .update({ xp: newXP })
-            .eq('id', currentUser.id);
-
-        if (error) throw error;
-
-        updateStatsDisplay({ xp: newXP });
+        if (timeSinceLastCollection >= cooldownMs) {
+            document.getElementById('collect-btn').disabled = false;
+            document.getElementById('collect-btn').textContent = 'Collect Item!';
+            document.getElementById('collect-timer').textContent = '';
+        } else {
+            const remainingMs = cooldownMs - timeSinceLastCollection;
+            const remainingHours = Math.ceil(remainingMs / (60 * 60 * 1000));
+            document.getElementById('collect-btn').disabled = true;
+            document.getElementById('collect-btn').textContent = 'Collect Item!';
+            document.getElementById('collect-timer').textContent = `Next in ${remainingHours}h`;
+        }
     } catch (error) {
-        console.error('Error adding XP:', error);
+        console.error('Error loading home:', error);
     }
 }
 
-// Collect items (respects cooldown)
-async function collectItems() {
-    if (!currentUser) return;
+async function collectItem() {
+    if (!currentUser || !userAccount) return;
 
     try {
-        // Check if enough time has passed since last collection
-        const { data: account } = await supabaseClient
-            .from('accounts')
-            .select('last_collected')
-            .eq('id', currentUser.id)
-            .single();
+        // Get random type
+        const { data: allTypes } = await supabaseClient
+            .from('type')
+            .select('id');
 
-        const lastCollected = account?.last_collected ? new Date(account.last_collected) : null;
-        const now = new Date();
-        const cooldownHours = 4; // Change this to adjust cooldown
-        const timeSinceCollection = lastCollected ? (now - lastCollected) / (1000 * 60 * 60) : cooldownHours + 1;
-
-        if (timeSinceCollection < cooldownHours) {
-            const hoursRemaining = (cooldownHours - timeSinceCollection).toFixed(1);
-            alert(`You can collect again in ${hoursRemaining} hours`);
+        if (!allTypes || allTypes.length === 0) {
+            showNotification('No items available', 'warning');
             return;
         }
 
-        // Grant random item
-        const itemRarities = ['common', 'uncommon', 'rare', 'epic', 'legendary'];
-        const rarityWeights = [50, 30, 15, 4, 1]; // Weighted probability
-        const random = Math.random() * 100;
-        let selectedRarity = itemRarities[0];
-        let cumulativeWeight = 0;
+        const randomType = allTypes[Math.floor(Math.random() * allTypes.length)];
 
-        for (let i = 0; i < rarityWeights.length; i++) {
-            cumulativeWeight += rarityWeights[i];
-            if (random <= cumulativeWeight) {
-                selectedRarity = itemRarities[i];
-                break;
-            }
-        }
-
-        // Get random item of that rarity
-        const { data: items, error: itemError } = await supabaseClient
-            .from('items')
-            .select('id')
-            .eq('rarity', selectedRarity);
-
-        if (itemError || !items || items.length === 0) {
-            throw new Error('No items available');
-        }
-
-        const randomItem = items[Math.floor(Math.random() * items.length)];
-
-        // Check if player already has this item
-        const { data: existingInventory } = await supabaseClient
+        // Add to inventory
+        await supabaseClient
             .from('inventory')
-            .select('*')
-            .eq('account_id', currentUser.id)
-            .eq('item_id', randomItem.id)
-            .single();
+            .insert([{
+                account_id: currentUser.id,
+                type_id: randomType.id
+            }]);
 
-        if (existingInventory) {
-            // Update quantity
-            await supabaseClient
-                .from('inventory')
-                .update({ quantity: existingInventory.quantity + 1 })
-                .eq('id', existingInventory.id);
-        } else {
-            // Add new inventory entry
-            await supabaseClient
-                .from('inventory')
-                .insert([{
-                    account_id: currentUser.id,
-                    item_id: randomItem.id,
-                    quantity: 1,
-                }]);
-        }
-
-        // Update last_collected timestamp
+        // Update last_collected time
         await supabaseClient
             .from('accounts')
-            .update({ last_collected: now.toISOString() })
+            .update({ last_collected: new Date().toISOString() })
             .eq('id', currentUser.id);
 
-        // Reload data
+        showNotification('Item collected!', 'success');
         await loadUserData();
-        alert('You collected an item!');
     } catch (error) {
-        console.error('Error collecting items:', error);
-        alert('Failed to collect items');
+        console.error('Error collecting item:', error);
+        showNotification('Failed to collect item', 'error');
     }
 }
 
-// Remove item from inventory
-async function removeItem(itemId) {
+// INVENTORY TAB
+async function loadInventory() {
     if (!currentUser) return;
 
     try {
-        const { error } = await supabaseClient
+        const { data: items } = await supabaseClient
+            .from('inventory')
+            .select('id, type(id, name, rarity), acquired_at')
+            .eq('account_id', currentUser.id)
+            .order('acquired_at', { ascending: false });
+
+        const inventoryDisplay = document.getElementById('inventory-display');
+
+        if (!items || items.length === 0) {
+            inventoryDisplay.innerHTML = '<p class="empty-message">No items in inventory</p>';
+            return;
+        }
+
+        inventoryDisplay.innerHTML = items.map(item => `
+            <div class="inventory-item">
+                <div class="item-header">
+                    <p class="item-name">${escapeHtml(item.type.name)}</p>
+                    <span class="rarity-badge rarity-${item.type.rarity}">${item.type.rarity}</span>
+                </div>
+                <p class="item-acquired">Acquired: ${new Date(item.acquired_at).toLocaleDateString()}</p>
+                <button class="btn btn-secondary btn-small" onclick="openSellModal('${item.id}', '${item.type.id}', '${escapeHtml(item.type.name)}')">Sell</button>
+            </div>
+        `).join('');
+    } catch (error) {
+        console.error('Error loading inventory:', error);
+    }
+}
+
+// SHOP TAB
+async function loadShop() {
+    if (!currentUser) return;
+
+    try {
+        const { data: listings } = await supabaseClient
+            .from('shop')
+            .select('id, owner_id, type_id, price, type(name, rarity), accounts!shop_owner_id_fkey(name)')
+            .order('created_at', { ascending: false });
+
+        const shopDisplay = document.getElementById('shop-display');
+
+        if (!listings || listings.length === 0) {
+            shopDisplay.innerHTML = '<p class="empty-message">No items in marketplace</p>';
+            return;
+        }
+
+        shopDisplay.innerHTML = listings.map(listing => {
+            const isOwnListing = listing.owner_id === currentUser.id;
+
+            return `
+                <div class="shop-item">
+                    <div class="shop-item-header">
+                        <p class="shop-item-name">${escapeHtml(listing.type.name)}</p>
+                        <span class="rarity-badge rarity-${listing.type.rarity}">${listing.type.rarity}</span>
+                    </div>
+                    <p class="shop-item-price">💰 ${listing.price}</p>
+                    <p style="font-size: 0.85rem; color: #666; margin-bottom: 0.5rem;">Seller: ${escapeHtml(listing.accounts.name)}</p>
+                    ${isOwnListing
+                        ? `<button class="btn btn-secondary btn-small" onclick="cancelListing('${listing.id}')">Cancel Sale</button>`
+                        : `<button class="btn btn-primary btn-small" onclick="buyListing('${listing.id}', ${listing.price}, '${listing.type_id}', '${listing.owner_id}')">Buy</button>`
+                    }
+                </div>
+            `;
+        }).join('');
+    } catch (error) {
+        console.error('Error loading shop:', error);
+        showNotification('Failed to load marketplace', 'error');
+    }
+}
+
+async function openSellModal(inventoryId, typeId, typeName) {
+    document.getElementById('sell-item-name').textContent = typeName;
+    document.getElementById('sell-item-id').value = inventoryId;
+    document.getElementById('sell-type-id').value = typeId;
+    document.getElementById('sell-price-input').value = '';
+    document.getElementById('sell-modal').style.display = 'flex';
+}
+
+function closeSellModal() {
+    document.getElementById('sell-modal').style.display = 'none';
+}
+
+async function submitSellItem() {
+    if (!currentUser) return;
+
+    const inventoryId = document.getElementById('sell-item-id').value;
+    const typeId = document.getElementById('sell-type-id').value;
+    const price = parseInt(document.getElementById('sell-price-input').value);
+
+    if (!price || price < 1) {
+        showNotification('Please enter a valid price', 'warning');
+        return;
+    }
+
+    try {
+        // Create shop listing
+        const { error: insertError } = await supabaseClient
+            .from('shop')
+            .insert([{
+                owner_id: currentUser.id,
+                type_id: typeId,
+                price: price
+            }]);
+
+        if (insertError) throw insertError;
+
+        // Remove from inventory
+        await supabaseClient
             .from('inventory')
             .delete()
-            .eq('id', itemId)
-            .eq('account_id', currentUser.id);
+            .eq('id', inventoryId);
 
-        if (error) throw error;
-
-        // Reload inventory
+        showNotification('Item listed for sale!', 'success');
+        closeSellModal();
         await loadUserData();
     } catch (error) {
-        console.error('Error removing item:', error);
-        alert('Failed to remove item');
+        console.error('Error selling item:', error);
+        showNotification('Failed to list item', 'error');
     }
 }
 
-// Show delete account confirmation
-function showDeleteConfirmation() {
-    pendingAction = 'delete_account';
-    document.getElementById('modal-title').textContent = 'Delete Account';
-    document.getElementById('modal-message').textContent = 'Are you sure you want to delete your account? This action cannot be undone. All your data will be permanently deleted.';
-    document.getElementById('confirmation-modal').style.display = 'flex';
-}
+async function cancelListing(listingId) {
+    if (!currentUser) return;
 
-// Confirm action (delete account)
-async function confirmAction() {
-    if (pendingAction === 'delete_account') {
-        await deleteAccount();
+    try {
+        // Get the listing
+        const { data: listing } = await supabaseClient
+            .from('shop')
+            .select('type_id')
+            .eq('id', listingId)
+            .single();
+
+        if (!listing) {
+            showNotification('Listing not found', 'error');
+            return;
+        }
+
+        // Delete from shop
+        await supabaseClient
+            .from('shop')
+            .delete()
+            .eq('id', listingId);
+
+        // Return to inventory
+        await supabaseClient
+            .from('inventory')
+            .insert([{
+                account_id: currentUser.id,
+                type_id: listing.type_id
+            }]);
+
+        showNotification('Sale cancelled, item returned to inventory', 'success');
+        await loadUserData();
+    } catch (error) {
+        console.error('Error cancelling listing:', error);
+        showNotification('Failed to cancel sale', 'error');
     }
-    closeModal();
 }
 
-// Delete account
+async function buyListing(listingId, price, typeId, sellerId) {
+    if (!currentUser || !userAccount) return;
+
+    try {
+        if (userAccount.money < price) {
+            showNotification('Not enough money', 'error');
+            return;
+        }
+
+        // Verify listing still exists
+        const { data: listing } = await supabaseClient
+            .from('shop')
+            .select('id')
+            .eq('id', listingId)
+            .single();
+
+        if (!listing) {
+            showNotification('This item was already sold', 'error');
+            await loadShop();
+            return;
+        }
+
+        // Deduct money from buyer
+        await supabaseClient
+            .from('accounts')
+            .update({ money: userAccount.money - price })
+            .eq('id', currentUser.id);
+
+        // Add money to seller
+        const { data: seller } = await supabaseClient
+            .from('accounts')
+            .select('money')
+            .eq('id', sellerId)
+            .single();
+
+        await supabaseClient
+            .from('accounts')
+            .update({ money: seller.money + price })
+            .eq('id', sellerId);
+
+        // Add item to buyer inventory
+        await supabaseClient
+            .from('inventory')
+            .insert([{
+                account_id: currentUser.id,
+                type_id: typeId
+            }]);
+
+        // Record transaction
+        await supabaseClient
+            .from('transactions')
+            .insert([{
+                buyer_id: currentUser.id,
+                seller_id: sellerId,
+                type_id: typeId,
+                price: price
+            }]);
+
+        // Delete listing
+        await supabaseClient
+            .from('shop')
+            .delete()
+            .eq('id', listingId);
+
+        showNotification('Item purchased!', 'success');
+        await loadUserData();
+    } catch (error) {
+        console.error('Error buying item:', error);
+        showNotification('Failed to purchase item', 'error');
+    }
+}
+
+// FRIENDS TAB
+async function loadFriends() {
+    if (!currentUser) return;
+
+    try {
+        const { data: friends } = await supabaseClient
+            .from('friends')
+            .select('id, friend_id, friends_accounts!friends_friend_id_fkey(name)')
+            .eq('user_id', currentUser.id)
+            .eq('status', 'accepted');
+
+        const friendsList = document.getElementById('friends-list');
+
+        if (!friends || friends.length === 0) {
+            friendsList.innerHTML = '<p class="empty-message">No friends yet</p>';
+        } else {
+            friendsList.innerHTML = friends.map(f => `
+                <div class="friend-item">
+                    <p class="friend-name">${escapeHtml(f.friends_accounts.name)}</p>
+                    <button class="btn btn-danger btn-small" onclick="removeFriend('${f.id}')">Remove</button>
+                </div>
+            `).join('');
+        }
+    } catch (error) {
+        console.error('Error loading friends:', error);
+    }
+}
+
+async function addFriend() {
+    if (!currentUser) return;
+
+    const username = prompt('Enter friend username:');
+    if (!username) return;
+
+    try {
+        // Find user by username
+        const { data: user } = await supabaseClient
+            .from('accounts')
+            .select('id')
+            .eq('name', username)
+            .single();
+
+        if (!user) {
+            showNotification('User not found', 'error');
+            return;
+        }
+
+        if (user.id === currentUser.id) {
+            showNotification('Cannot add yourself', 'warning');
+            return;
+        }
+
+        // Check if already friends
+        const { data: existing } = await supabaseClient
+            .from('friends')
+            .select('id')
+            .eq('user_id', currentUser.id)
+            .eq('friend_id', user.id);
+
+        if (existing && existing.length > 0) {
+            showNotification('Already friends', 'warning');
+            return;
+        }
+
+        // Add friend
+        await supabaseClient
+            .from('friends')
+            .insert([{
+                user_id: currentUser.id,
+                friend_id: user.id,
+                status: 'accepted'
+            }]);
+
+        showNotification('Friend added!', 'success');
+        await loadFriends();
+    } catch (error) {
+        console.error('Error adding friend:', error);
+        showNotification('Failed to add friend', 'error');
+    }
+}
+
+async function removeFriend(friendshipId) {
+    if (!currentUser) return;
+
+    try {
+        await supabaseClient
+            .from('friends')
+            .delete()
+            .eq('id', friendshipId);
+
+        showNotification('Friend removed', 'success');
+        await loadFriends();
+    } catch (error) {
+        console.error('Error removing friend:', error);
+        showNotification('Failed to remove friend', 'error');
+    }
+}
+
+// PROFILE TAB
+async function changeUsername() {
+    if (!currentUser) return;
+
+    const newName = prompt('Enter new username:', userAccount.name);
+    if (!newName || newName === userAccount.name) return;
+
+    try {
+        await supabaseClient
+            .from('accounts')
+            .update({ name: newName })
+            .eq('id', currentUser.id);
+
+        userAccount.name = newName;
+        document.getElementById('user-name').textContent = newName;
+        showNotification('Username changed!', 'success');
+    } catch (error) {
+        console.error('Error changing username:', error);
+        showNotification('Failed to change username', 'error');
+    }
+}
+
+async function logout() {
+    try {
+        await supabaseClient.auth.signOut();
+        currentUser = null;
+        userAccount = null;
+        showLoginPage();
+    } catch (error) {
+        console.error('Error logging out:', error);
+    }
+}
+
 async function deleteAccount() {
     if (!currentUser) return;
 
     try {
-        console.log('Starting account deletion for user:', currentUser.id);
-        
-        // Delete inventory entries first (inventory has FK to accounts)
-        console.log('Deleting inventory entries...');
-        const { data: invData, error: invError } = await supabaseClient
-            .from('inventory')
-            .delete()
-            .eq('account_id', currentUser.id)
-            .select();
-
-        if (invError) {
-            console.error('Error deleting inventory:', invError);
-            throw invError;
-        }
-        console.log('Inventory deleted successfully. Deleted rows:', invData);
-
-        // Verify inventory is gone
-        const { data: checkInv } = await supabaseClient
-            .from('inventory')
-            .select('id')
-            .eq('account_id', currentUser.id);
-        console.log('Inventory count after deletion:', checkInv?.length || 0);
-
-        // Delete account
-        console.log('Deleting account record...');
-        const { data: accData, error: accError } = await supabaseClient
-            .from('accounts')
-            .delete()
-            .eq('id', currentUser.id)
-            .select();
-
-        if (accError) {
-            console.error('Error deleting account:', accError);
-            throw accError;
-        }
-        console.log('Account deleted successfully. Deleted rows:', accData);
-
-        // Verify account is gone
-        const { data: checkAcc } = await supabaseClient
-            .from('accounts')
-            .select('id')
-            .eq('id', currentUser.id);
-        console.log('Account count after deletion:', checkAcc?.length || 0);
-
-        // Sign out
-        await logout();
-
-        alert('Account and all associated data have been deleted.');
+        await supabaseClient.from('accounts').delete().eq('id', currentUser.id);
+        await supabaseClient.auth.signOut();
+        currentUser = null;
+        userAccount = null;
+        showLoginPage();
+        showNotification('Account deleted', 'success');
     } catch (error) {
         console.error('Error deleting account:', error);
-        alert('Failed to delete account: ' + (error.message || 'Unknown error'));
+        showNotification('Failed to delete account', 'error');
     }
 }
 
-// Close modal
-function closeModal() {
-    document.getElementById('confirmation-modal').style.display = 'none';
-    pendingAction = null;
+// TAB SWITCHING
+function switchTab(tab) {
+    currentTab = tab;
+    document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+    document.querySelector(`[data-tab="${tab}"]`).classList.add('active');
+
+    document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+    document.getElementById(`${tab}-tab`).classList.add('active');
+
+    // Reload data for the tab
+    if (tab === 'home') loadHome();
+    if (tab === 'inventory') loadInventory();
+    if (tab === 'shop') loadShop();
+    if (tab === 'friends') loadFriends();
 }
 
-// UI Updates
+// UTILITY FUNCTIONS
 function showLoginPage() {
-    document.getElementById('login-page').style.display = 'block';
+    document.getElementById('login-page').style.display = 'flex';
     document.getElementById('dashboard-page').style.display = 'none';
 }
 
 function showDashboard() {
     document.getElementById('login-page').style.display = 'none';
-    document.getElementById('dashboard-page').style.display = 'block';
+    document.getElementById('dashboard-page').style.display = 'flex';
+}
+
+function hideLoadingScreen() {
+    document.getElementById('loading-screen').classList.add('hidden');
 }
 
 function showLoginError(message) {
@@ -424,77 +648,59 @@ function showLoginError(message) {
     errorEl.style.display = 'block';
 }
 
-function updateScoreDisplay(score) {
-    document.getElementById('score-display').textContent = score;
+function showDeleteConfirm() {
+    pendingAction = 'delete_account';
+    document.getElementById('modal-title').textContent = 'Delete Account';
+    document.getElementById('modal-message').textContent = 'This action cannot be undone. All your data will be permanently deleted.';
+    document.getElementById('modal-confirm-btn').textContent = 'Delete';
+    document.getElementById('modal-confirm-btn').className = 'btn btn-danger';
+    document.getElementById('confirmation-modal').style.display = 'flex';
 }
 
-function updateStatsDisplay(account) {
-    document.getElementById('xp-display').textContent = account.xp || 0;
-    document.getElementById('money-display').textContent = account.money || 0;
-    
-    // Calculate next collection time if last_collected exists
-    if (account.last_collected) {
-        const lastCollected = new Date(account.last_collected);
-        const nextCollection = new Date(lastCollected.getTime() + 4 * 60 * 60 * 1000);
-        const now = new Date();
-        const hoursUntil = Math.max(0, (nextCollection - now) / (1000 * 60 * 60));
-        
-        const nextCollectionEl = document.getElementById('next-collection');
-        if (nextCollectionEl) {
-            if (hoursUntil > 0) {
-                nextCollectionEl.textContent = `Next collection in ${hoursUntil.toFixed(1)} hours`;
-            } else {
-                nextCollectionEl.textContent = 'Ready to collect!';
-            }
-        }
+function confirmAction() {
+    if (pendingAction === 'delete_account') {
+        deleteAccount();
     }
+    closeModal();
 }
 
-function updateInventoryDisplay(items) {
-    const container = document.getElementById('inventory-display');
-
-    if (items.length === 0) {
-        container.innerHTML = '<p class="empty-message">No items in inventory</p>';
-        return;
-    }
-
-    container.innerHTML = items.map(item => {
-        const itemData = item.items;
-        const rarityColor = {
-            'common': '#95a5a6',
-            'uncommon': '#2ecc71',
-            'rare': '#3498db',
-            'epic': '#9b59b6',
-            'legendary': '#f39c12'
-        };
-        
-        return `
-            <div class="inventory-item" style="border-left: 4px solid ${rarityColor[itemData.rarity] || '#95a5a6'};">
-                <div class="item-info">
-                    <h4>${escapeHtml(itemData.name)}</h4>
-                    <p class="item-rarity" style="color: ${rarityColor[itemData.rarity] || '#95a5a6'}; font-size: 12px; font-weight: bold;">${itemData.rarity.toUpperCase()}</p>
-                    <p style="font-size: 12px; color: #7f8c8d;">${escapeHtml(itemData.description || '')}</p>
-                </div>
-                <div style="display: flex; align-items: center; gap: 12px;">
-                    <span class="item-quantity">${item.quantity}x</span>
-                    <button class="btn btn-secondary" onclick="removeItem('${item.id}')" style="padding: 6px 12px; font-size: 12px;">Remove</button>
-                </div>
-            </div>
-        `;
-    }).join('');
+function closeModal() {
+    document.getElementById('confirmation-modal').style.display = 'none';
+    pendingAction = null;
 }
 
-// Utility function to escape HTML
 function escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
 }
 
-// Close modal when clicking outside
-document.addEventListener('click', (e) => {
-    const modal = document.getElementById('confirmation-modal');
-    if (e.target === modal) {
-        closeModal();
+// Notification System
+function showNotification(message, type = 'success', duration = 3000) {
+    const container = document.getElementById('notification-container');
+    const notification = document.createElement('div');
+    const icons = {
+        'success': 'bi-check-circle-fill',
+        'error': 'bi-exclamation-circle-fill',
+        'warning': 'bi-exclamation-triangle-fill',
+        'info': 'bi-info-circle-fill'
+    };
+
+    notification.className = `notification ${type}`;
+    notification.innerHTML = `
+        <i class="bi ${icons[type]} notif-icon"></i>
+        <div class="notif-content">${escapeHtml(message)}</div>
+        <button class="notif-close" onclick="this.parentElement.remove()">
+            <i class="bi bi-x"></i>
+        </button>
+    `;
+
+    container.appendChild(notification);
+
+    if (duration > 0) {
+        setTimeout(() => {
+            notification.classList.add('removing');
+            setTimeout(() => notification.remove(), 300);
+        }, duration);
     }
-});
+}
