@@ -52,6 +52,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             currentUser = session.user;
             console.log('Restoring logged in user:', currentUser.email);
             await loadUserData();
+            hideLoadingScreen();
             showDashboard();
             
             // Set up auth listener after restoring session
@@ -75,14 +76,14 @@ document.addEventListener('DOMContentLoaded', async () => {
             currentUser = session.user;
             console.log('User logged in via auth event:', currentUser.email);
             await loadUserData();
+            hideLoadingScreen();
             showDashboard();
         } else {
             currentUser = null;
+            hideLoadingScreen();
             showLoginPage();
         }
     });
-
-    showLoginPage();
 });
 
 async function loginWithGoogle() {
@@ -414,6 +415,10 @@ function showLoginPage() {
 function showDashboard() {
     document.getElementById('login-page').style.display = 'none';
     document.getElementById('dashboard-page').style.display = 'flex';
+}
+
+function hideLoadingScreen() {
+    document.getElementById('loading-screen').classList.add('hidden');
 }
 
 function showLoginError(message) {
