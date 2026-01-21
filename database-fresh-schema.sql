@@ -60,7 +60,7 @@ CREATE POLICY "Users can create own inventory" ON inventory FOR INSERT WITH CHEC
 DROP POLICY IF EXISTS "Users can delete own inventory" ON inventory;
 CREATE POLICY "Users can delete own inventory" ON inventory FOR DELETE USING (account_id = auth.uid());
 
--- Step 8: RLS Policies - shop (anyone can view unsold items)
+-- Step 8: RLS Policies - shop (anyone can view, owner can delete own, anyone can delete to complete purchase)
 DROP POLICY IF EXISTS "Anyone can view shop listings" ON shop;
 CREATE POLICY "Anyone can view shop listings" ON shop FOR SELECT USING (true);
 
@@ -68,7 +68,7 @@ DROP POLICY IF EXISTS "Users can create their listings" ON shop;
 CREATE POLICY "Users can create their listings" ON shop FOR INSERT WITH CHECK (owner_id = auth.uid());
 
 DROP POLICY IF EXISTS "Users can delete their listings" ON shop;
-CREATE POLICY "Users can delete their listings" ON shop FOR DELETE USING (owner_id = auth.uid());
+CREATE POLICY "Users can delete their listings" ON shop FOR DELETE USING (true);
 
 -- Step 9: RLS Policies - transactions (view own transactions)
 DROP POLICY IF EXISTS "Users can view own transactions" ON transactions;
@@ -85,7 +85,23 @@ CREATE INDEX IF NOT EXISTS idx_shop_type_id ON shop(type_id);
 CREATE INDEX IF NOT EXISTS idx_transactions_buyer_id ON transactions(buyer_id);
 CREATE INDEX IF NOT EXISTS idx_transactions_seller_id ON transactions(seller_id);
 
--- Step 11: Insert sample types (if they don't exist)
+-- Step 11: Create trigger to delete shop listing when transaction is created
+DROP FUNCTION IF EXISTS delete_shop_on_purchase() CASCADE;
+CREATE FUNCTION delete_shop_on_purchase()
+RETURNS TRIGGER AS $$
+BEGIN
+  DELETE FROM shop WHERE type_id = NEW.type_id AND owner_id = NEW.seller_id LIMIT 1;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trigger_delete_shop_on_purchase ON transactions;
+CREATE TRIGGER trigger_delete_shop_on_purchase
+AFTER INSERT ON transactions
+FOR EACH ROW
+EXECUTE FUNCTION delete_shop_on_purchase();
+
+-- Step 12: Insert sample types (if they don't exist)
 INSERT INTO type (name, rarity, description) VALUES
   ('Common Sword', 'common', 'A basic iron sword'),
   ('Wooden Shield', 'common', 'A sturdy wooden shield'),
@@ -93,4 +109,4 @@ INSERT INTO type (name, rarity, description) VALUES
   ('Dragon Egg', 'legendary', 'A legendary dragon egg')
 ON CONFLICT (name) DO NOTHING;
 
--- Done! Fresh schema is ready.
+-- Done! Fresh schema with automatic deletion on purchase is ready.

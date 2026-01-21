@@ -436,19 +436,6 @@ async function buyListing(listingId, price, typeId, sellerId) {
             return;
         }
 
-        // DELETE LISTING FIRST to prevent duplicate purchases
-        const { data: deleted } = await supabaseClient
-            .from('shop')
-            .delete()
-            .eq('id', listingId)
-            .select();
-
-        if (!deleted || deleted.length === 0) {
-            showNotification('This item was already sold', 'error');
-            await loadShop();
-            return;
-        }
-
         // Deduct money from buyer
         await supabaseClient
             .from('accounts')
@@ -475,7 +462,7 @@ async function buyListing(listingId, price, typeId, sellerId) {
                 type_id: typeId
             }]);
 
-        // Record transaction
+        // Record transaction (will trigger server-side deletion of shop listing)
         await supabaseClient
             .from('transactions')
             .insert([{
@@ -484,6 +471,14 @@ async function buyListing(listingId, price, typeId, sellerId) {
                 type_id: typeId,
                 price: price
             }]);
+
+        // Delete listing from shop (backup, trigger will also handle this)
+        supabaseClient
+            .from('shop')
+            .delete()
+            .eq('id', listingId)
+            .then(() => {})
+            .catch(() => {});
 
         showNotification('Item purchased!', 'success');
         await loadUserData();
