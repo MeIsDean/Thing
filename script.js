@@ -347,17 +347,33 @@ async function deleteAccount() {
     if (!currentUser) return;
 
     try {
-        // Delete inventory entries
-        await supabaseClient
+        console.log('Starting account deletion for user:', currentUser.id);
+        
+        // Delete inventory entries first (inventory has FK to accounts)
+        console.log('Deleting inventory entries...');
+        const { error: invError } = await supabaseClient
             .from('inventory')
             .delete()
             .eq('account_id', currentUser.id);
 
+        if (invError) {
+            console.error('Error deleting inventory:', invError);
+            throw invError;
+        }
+        console.log('Inventory deleted successfully');
+
         // Delete account
-        await supabaseClient
+        console.log('Deleting account record...');
+        const { error: accError } = await supabaseClient
             .from('accounts')
             .delete()
             .eq('id', currentUser.id);
+
+        if (accError) {
+            console.error('Error deleting account:', accError);
+            throw accError;
+        }
+        console.log('Account deleted successfully');
 
         // Sign out
         await logout();
@@ -365,7 +381,7 @@ async function deleteAccount() {
         alert('Account and all associated data have been deleted.');
     } catch (error) {
         console.error('Error deleting account:', error);
-        alert('Failed to delete account');
+        alert('Failed to delete account: ' + (error.message || 'Unknown error'));
     }
 }
 

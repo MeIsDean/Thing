@@ -54,6 +54,10 @@ DROP POLICY IF EXISTS "Users can insert their own account" ON accounts;
 CREATE POLICY "Users can insert their own account" ON accounts
   FOR INSERT WITH CHECK (auth.uid() = id);
 
+DROP POLICY IF EXISTS "Users can delete their own account" ON accounts;
+CREATE POLICY "Users can delete their own account" ON accounts
+  FOR DELETE USING (auth.uid() = id);
+
 -- Step 7: Create RLS policies for items table
 DROP POLICY IF EXISTS "Anyone can view items" ON items;
 CREATE POLICY "Anyone can view items" ON items
