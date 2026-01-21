@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 // Build script for Vercel - injects environment variables into script.js
+// Updated: 2026-01-21
 const fs = require('fs');
 const path = require('path');
 
