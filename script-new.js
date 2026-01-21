@@ -152,6 +152,8 @@ async function loadUserData() {
         updateStatsDisplay(account);
         updateInventoryDisplay(inventory || []);
         updateCollectionUI(account);
+        loadFriendsList();
+        loadShop();
         
         console.log('UI updated');
     } catch (error) {
@@ -405,6 +407,274 @@ async function removeItem(itemId) {
     } catch (error) {
         console.error('Error removing item:', error);
     }
+}
+
+// ===== FRIENDS FUNCTIONALITY =====
+async function loadFriendsList() {
+    if (!currentUser) return;
+
+    try {
+        const { data: friends, error } = await supabaseClient
+            .from('friends')
+            .select('id, user_id, friend_id, accounts!friends_friend_id_fkey(id, name), status')
+            .eq('user_id', currentUser.id)
+            .eq('status', 'accepted');
+
+        if (error) throw error;
+
+        const friendsDisplay = document.getElementById('friends-display');
+        if (!friends || friends.length === 0) {
+            friendsDisplay.innerHTML = '<p class="empty-message">No friends yet</p>';
+            return;
+        }
+
+        friendsDisplay.innerHTML = friends.map(f => `
+            <div class="friend-item">
+                <div class="friend-info">
+                    <p class="friend-name">${escapeHtml(f.accounts.name)}</p>
+                </div>
+                <button class="btn btn-secondary btn-small" onclick="removeFriend('${f.id}')">Remove</button>
+            </div>
+        `).join('');
+    } catch (error) {
+        console.error('Error loading friends:', error);
+        showNotification('Failed to load friends', 'error');
+    }
+}
+
+async function addFriend() {
+    if (!currentUser) return;
+
+    const input = document.getElementById('friend-input');
+    const username = input.value.trim();
+
+    if (!username) {
+        showNotification('Please enter a username', 'warning');
+        return;
+    }
+
+    try {
+        const { data: friend, error: fetchError } = await supabaseClient
+            .from('accounts')
+            .select('id')
+            .eq('name', username)
+            .single();
+
+        if (fetchError) {
+            showNotification('User not found', 'error');
+            return;
+        }
+
+        if (friend.id === currentUser.id) {
+            showNotification('You cannot add yourself', 'warning');
+            return;
+        }
+
+        const { error } = await supabaseClient
+            .from('friends')
+            .insert([{ user_id: currentUser.id, friend_id: friend.id, status: 'accepted' }]);
+
+        if (error) {
+            showNotification('Failed to add friend', 'error');
+            throw error;
+        }
+
+        input.value = '';
+        showNotification('Friend added!', 'success');
+        await loadFriendsList();
+    } catch (error) {
+        console.error('Error adding friend:', error);
+    }
+}
+
+async function removeFriend(friendshipId) {
+    if (!currentUser) return;
+
+    try {
+        const { error } = await supabaseClient
+            .from('friends')
+            .delete()
+            .eq('id', friendshipId);
+
+        if (error) throw error;
+
+        showNotification('Friend removed', 'success');
+        await loadFriendsList();
+    } catch (error) {
+        console.error('Error removing friend:', error);
+        showNotification('Failed to remove friend', 'error');
+    }
+}
+
+// ===== SHOP FUNCTIONALITY =====
+async function loadShop() {
+    if (!currentUser) return;
+
+    try {
+        const { data: shopItems, error } = await supabaseClient
+            .from('shop_listings')
+            .select('*, items(id, name, rarity)');
+
+        if (error) throw error;
+
+        const { data: userInventory } = await supabaseClient
+            .from('inventory')
+            .select('item_id, quantity')
+            .eq('account_id', currentUser.id);
+
+        const inventoryMap = {};
+        if (userInventory) {
+            userInventory.forEach(inv => {
+                inventoryMap[inv.item_id] = inv.quantity;
+            });
+        }
+
+        const buyDisplay = document.getElementById('buy-display');
+        buyDisplay.innerHTML = shopItems.map(shop => `
+            <div class="shop-item">
+                <div class="shop-item-header">
+                    <p class="shop-item-name">${escapeHtml(shop.items.name)}</p>
+                    <span class="rarity-badge rarity-${shop.items.rarity}">${shop.items.rarity}</span>
+                </div>
+                <p class="shop-item-price">💰 ${shop.buy_price}</p>
+                <button class="btn btn-primary btn-small" onclick="buyItem('${shop.item_id}', ${shop.buy_price})">Buy</button>
+            </div>
+        `).join('');
+
+        const sellDisplay = document.getElementById('sell-display');
+        if (!userInventory || userInventory.length === 0) {
+            sellDisplay.innerHTML = '<p class="empty-message">No items to sell</p>';
+            return;
+        }
+
+        const { data: userItems } = await supabaseClient
+            .from('inventory')
+            .select('id, quantity, items(id, name, rarity), item_id')
+            .eq('account_id', currentUser.id);
+
+        const sellableItems = await Promise.all(userItems.map(async (inv) => {
+            const { data: shop } = await supabaseClient
+                .from('shop_listings')
+                .select('sell_price')
+                .eq('item_id', inv.item_id)
+                .single();
+
+            return { ...inv, sell_price: shop?.sell_price || 50 };
+        }));
+
+        sellDisplay.innerHTML = sellableItems.map(inv => `
+            <div class="shop-item">
+                <div class="shop-item-header">
+                    <p class="shop-item-name">${escapeHtml(inv.items.name)}</p>
+                    <span class="rarity-badge rarity-${inv.items.rarity}">${inv.items.rarity}</span>
+                </div>
+                <p class="shop-item-quantity">You have: ${inv.quantity}</p>
+                <p class="shop-item-price">💰 ${inv.sell_price}</p>
+                <button class="btn btn-secondary btn-small" onclick="sellItem('${inv.id}', ${inv.sell_price}, '${inv.item_id}')">Sell</button>
+            </div>
+        `).join('');
+    } catch (error) {
+        console.error('Error loading shop:', error);
+        showNotification('Failed to load shop', 'error');
+    }
+}
+
+async function buyItem(itemId, price) {
+    if (!currentUser || !userAccount) return;
+
+    try {
+        if (userAccount.money < price) {
+            showNotification('Not enough money', 'error');
+            return;
+        }
+
+        await supabaseClient
+            .from('accounts')
+            .update({ money: userAccount.money - price })
+            .eq('id', currentUser.id);
+
+        const { data: existing } = await supabaseClient
+            .from('inventory')
+            .select('id, quantity')
+            .eq('account_id', currentUser.id)
+            .eq('item_id', itemId)
+            .single();
+
+        if (existing) {
+            await supabaseClient
+                .from('inventory')
+                .update({ quantity: existing.quantity + 1 })
+                .eq('id', existing.id);
+        } else {
+            await supabaseClient
+                .from('inventory')
+                .insert([{ account_id: currentUser.id, item_id: itemId, quantity: 1 }]);
+        }
+
+        await supabaseClient
+            .from('shop_transactions')
+            .insert([{ account_id: currentUser.id, item_id: itemId, transaction_type: 'buy', quantity: 1, price_per_unit: price, total_price: price }]);
+
+        showNotification('Item purchased!', 'success');
+        await loadUserData();
+        await loadShop();
+    } catch (error) {
+        console.error('Error buying item:', error);
+        showNotification('Failed to buy item', 'error');
+    }
+}
+
+async function sellItem(inventoryId, price, itemId) {
+    if (!currentUser || !userAccount) return;
+
+    try {
+        const { data: item } = await supabaseClient
+            .from('inventory')
+            .select('quantity')
+            .eq('id', inventoryId)
+            .single();
+
+        if (!item || item.quantity <= 0) {
+            showNotification('Item not found', 'error');
+            return;
+        }
+
+        await supabaseClient
+            .from('accounts')
+            .update({ money: userAccount.money + price })
+            .eq('id', currentUser.id);
+
+        if (item.quantity > 1) {
+            await supabaseClient
+                .from('inventory')
+                .update({ quantity: item.quantity - 1 })
+                .eq('id', inventoryId);
+        } else {
+            await supabaseClient
+                .from('inventory')
+                .delete()
+                .eq('id', inventoryId);
+        }
+
+        await supabaseClient
+            .from('shop_transactions')
+            .insert([{ account_id: currentUser.id, item_id: itemId, transaction_type: 'sell', quantity: 1, price_per_unit: price, total_price: price }]);
+
+        showNotification('Item sold!', 'success');
+        await loadUserData();
+        await loadShop();
+    } catch (error) {
+        console.error('Error selling item:', error);
+        showNotification('Failed to sell item', 'error');
+    }
+}
+
+function switchShopTab(tab) {
+    currentShopTab = tab;
+    document.querySelectorAll('.shop-tab-btn').forEach(btn => btn.classList.remove('active'));
+    event.target.classList.add('active');
+    document.querySelectorAll('.shop-section').forEach(section => section.classList.remove('active'));
+    document.getElementById(tab + '-section').classList.add('active');
 }
 
 function showLoginPage() {

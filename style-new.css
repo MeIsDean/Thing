@@ -468,6 +468,53 @@ body {
     margin-bottom: 0.5rem;
 }
 
+.shop-item-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.5rem;
+    gap: 0.5rem;
+}
+
+.shop-item-quantity {
+    font-size: 0.85rem;
+    color: var(--text-light);
+    margin-bottom: 0.5rem;
+}
+
+.rarity-badge {
+    font-size: 0.7rem;
+    padding: 0.25rem 0.5rem;
+    border-radius: 0.25rem;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.rarity-common {
+    background: #888;
+    color: white;
+}
+
+.rarity-uncommon {
+    background: #4da6ff;
+    color: white;
+}
+
+.rarity-rare {
+    background: #9d4edd;
+    color: white;
+}
+
+.rarity-epic {
+    background: #ff006e;
+    color: white;
+}
+
+.rarity-legendary {
+    background: #ffb703;
+    color: black;
+}
+
 .shop-item-price {
     font-size: 1.25rem;
     font-weight: bold;
