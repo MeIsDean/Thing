@@ -176,14 +176,14 @@ async function loadHome() {
 
         if (timeSinceLastCollection >= cooldownMs) {
             document.getElementById('collect-btn').disabled = false;
-            document.getElementById('collect-btn').textContent = '<i class="bi bi-gift"></i> Collect Now';
+            document.getElementById('collect-btn').innerHTML = '<i class="bi bi-gift"></i> Collect Now';
             document.getElementById('collection-status').textContent = 'Ready to collect!';
             document.getElementById('collection-time').textContent = '';
         } else {
             const remainingMs = cooldownMs - timeSinceLastCollection;
             const remainingHours = Math.ceil(remainingMs / (60 * 60 * 1000));
             document.getElementById('collect-btn').disabled = true;
-            document.getElementById('collect-btn').textContent = '<i class="bi bi-gift"></i> Collect Now';
+            document.getElementById('collect-btn').innerHTML = '<i class="bi bi-gift"></i> Collect Now';
             document.getElementById('collection-status').textContent = 'Item collected!';
             document.getElementById('collection-time').textContent = `Next in ${remainingHours}h`;
         }
@@ -252,7 +252,6 @@ async function loadInventory() {
                     <p class="item-name">${escapeHtml(item.type.name)}</p>
                     <span class="rarity-badge rarity-${item.type.rarity}">${item.type.rarity}</span>
                 </div>
-                <p class="item-acquired">Acquired: ${new Date(item.acquired_at).toLocaleDateString()}</p>
             </div>
         `).join('');
     } catch (error) {
@@ -732,6 +731,17 @@ async function changeUsername() {
 
 async function changeName() {
     await changeUsername();
+    closeChangeNameInput();
+}
+
+function openChangeNameInput() {
+    document.getElementById('change-name-section').style.display = 'block';
+    document.getElementById('name-input').focus();
+}
+
+function closeChangeNameInput() {
+    document.getElementById('change-name-section').style.display = 'none';
+    document.getElementById('name-input').value = '';
 }
 
 async function logout() {

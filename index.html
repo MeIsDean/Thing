@@ -65,10 +65,7 @@
                         </button>
                     </div>
 
-                    <div class="info-box">
-                        <p><strong>Collect every 3 hours</strong></p>
-                        <p>Come back later to collect more items!</p>
-                    </div>
+
                 </div>
             </div>
 
@@ -105,8 +102,8 @@
                 <div class="page-content">
                     <h3>Marketplace</h3>
                     
-                    <button class="btn btn-primary" onclick="openSellModal()" style="margin-bottom: 1.5rem;">
-                        <i class="bi bi-plus-circle"></i> Sell Item
+                    <button class="btn-icon btn-sell" onclick="openSellModal()" title="Sell item" style="position: fixed; right: 2rem; top: 50%; transform: translateY(-50%); z-index: 10;">
+                        <i class="bi bi-plus"></i>
                     </button>
 
                     <div class="shop-grid" id="shop-display">
@@ -118,41 +115,35 @@
             <!-- Profile Tab -->
             <div id="profile-tab" class="tab-pane">
                 <div class="page-content">
-                    <h3>Profile</h3>
-
-                    <div class="settings-section">
-                        <h4>Profile</h4>
-                        <div class="profile-name-box">
-                            <h5 id="user-name">Player</h5>
+                    <div class="profile-header">
+                        <div class="profile-info">
+                            <h3 id="user-name">Player</h3>
+                            <button class="btn-icon" onclick="openChangeNameInput()" title="Change name">
+                                <i class="bi bi-pencil"></i>
+                            </button>
                         </div>
-                        <div class="profile-picture-box">
-                            <div class="profile-pic" id="profile-pic">
-                                <i class="bi bi-person-circle"></i>
-                            </div>
-                            <button class="btn btn-secondary btn-small" disabled>Upload Photo</button>
+                        <div class="profile-actions">
+                            <button class="btn-icon btn-danger" onclick="showDeleteConfirm()" title="Delete account">
+                                <i class="bi bi-trash"></i>
+                            </button>
+                            <button class="btn-icon" onclick="logout()" title="Sign out">
+                                <i class="bi bi-box-arrow-right"></i>
+                            </button>
                         </div>
                     </div>
 
-                    <div class="settings-section">
-                        <h4>Change Name</h4>
+                    <div class="profile-picture-box">
+                        <div class="profile-pic" id="profile-pic">
+                            <i class="bi bi-person-circle"></i>
+                        </div>
+                    </div>
+
+                    <div class="settings-section" id="change-name-section" style="display: none;">
                         <div class="input-group">
                             <input type="text" id="name-input" placeholder="Enter new name" class="input-field">
                             <button class="btn btn-primary" onclick="changeName()">Save</button>
+                            <button class="btn btn-secondary" onclick="closeChangeNameInput()">Cancel</button>
                         </div>
-                    </div>
-
-                    <div class="settings-section">
-                        <h4>Account</h4>
-                        <button class="btn btn-danger btn-full" onclick="showDeleteConfirm()">
-                            <i class="bi bi-trash"></i> Delete Account
-                        </button>
-                        <p class="warning-text">⚠️ This action cannot be undone</p>
-                    </div>
-
-                    <div class="settings-section">
-                        <button class="btn btn-secondary btn-full" id="logout-btn-settings" onclick="logout()">
-                            <i class="bi bi-box-arrow-right"></i> Sign Out
-                        </button>
                     </div>
                 </div>
             </div>
