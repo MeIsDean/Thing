@@ -811,14 +811,37 @@ function showLoginError(message) {
 function showDeleteConfirm() {
     pendingAction = 'delete_account';
     document.getElementById('modal-title').textContent = 'Delete Account';
-    document.getElementById('modal-message').textContent = 'This action cannot be undone. All your data will be permanently deleted.';
+    document.getElementById('modal-message').textContent = `To permanently delete your account, type your username below:\n\n${userAccount.name}`;
+    
+    const modal = document.getElementById('confirmation-modal');
+    const modalContent = modal.querySelector('.modal-content');
+    
+    // Create confirmation input
+    let confirmInput = modalContent.querySelector('#delete-username-confirm');
+    if (!confirmInput) {
+        confirmInput = document.createElement('input');
+        confirmInput.id = 'delete-username-confirm';
+        confirmInput.type = 'text';
+        confirmInput.className = 'input-field';
+        confirmInput.placeholder = `Type "${userAccount.name}" to confirm`;
+        confirmInput.style.marginTop = '1rem';
+        modalContent.querySelector('p').insertAdjacentElement('afterend', confirmInput);
+    } else {
+        confirmInput.value = '';
+    }
+    
     document.getElementById('modal-confirm-btn').textContent = 'Delete';
     document.getElementById('modal-confirm-btn').className = 'btn btn-danger';
-    document.getElementById('confirmation-modal').style.display = 'flex';
+    modal.style.display = 'flex';
 }
 
 function confirmAction() {
     if (pendingAction === 'delete_account') {
+        const confirmInput = document.getElementById('delete-username-confirm');
+        if (!confirmInput || confirmInput.value !== userAccount.name) {
+            showNotification('Username does not match', 'error');
+            return;
+        }
         deleteAccount();
     }
     closeModal();
