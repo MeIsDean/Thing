@@ -509,6 +509,32 @@ body {
     color: var(--text-dark);
 }
 
+.profile-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 1.5rem;
+    gap: 1rem;
+}
+
+.profile-info {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex: 1;
+}
+
+.profile-info h3 {
+    font-size: 1.5rem;
+    margin: 0;
+}
+
+.profile-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
 .profile-picture-box {
     text-align: center;
 }
@@ -630,6 +656,36 @@ body {
 .btn-danger:disabled {
     opacity: 0.5;
     cursor: not-allowed;
+}
+
+.btn-icon.btn-danger {
+    color: var(--danger);
+}
+
+.btn-icon.btn-danger:hover {
+    background: rgba(239, 68, 68, 0.1);
+    color: #dc2626;
+}
+
+.btn-sell {
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    background: var(--primary);
+    color: white;
+    font-size: 2rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    cursor: pointer;
+    box-shadow: var(--shadow-lg);
+    transition: all 0.2s;
+}
+
+.btn-sell:hover {
+    background: var(--primary-dark);
+    transform: scale(1.1);
 }
 
 .btn-success {
