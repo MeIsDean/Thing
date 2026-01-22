@@ -780,6 +780,14 @@ function switchTab(tab) {
     document.querySelectorAll('.tab-pane').forEach(pane => pane.classList.remove('active'));
     document.getElementById(`${tab}-tab`).classList.add('active');
 
+    // Adjust delete button visibility based on tab
+    const deleteBtn = document.querySelector('.btn-delete-bottom');
+    if (tab === 'profile') {
+        deleteBtn.style.display = 'flex';
+    } else {
+        deleteBtn.style.display = 'none';
+    }
+
     // Reload data for the tab
     if (tab === 'home') loadHome();
     if (tab === 'inventory') loadInventory();
